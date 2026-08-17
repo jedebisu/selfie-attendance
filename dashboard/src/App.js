@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
 import Users from './pages/Users';
 import MapView from './pages/MapView';
+import Calendar from './pages/Calendar';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import './styles/App.css';
@@ -34,6 +35,7 @@ function App() {
           }>
             <Route index element={<Dashboard />} />
             <Route path="attendance" element={<Attendance />} />
+            <Route path="calendar" element={<Calendar />} />
             <Route path="users" element={<Users />} />
             <Route path="map" element={<MapView />} />
           </Route>

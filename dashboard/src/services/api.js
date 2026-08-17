@@ -35,7 +35,8 @@ api.interceptors.response.use(
 export const attendanceAPI = {
   getAll: (params) => api.get('/attendance', { params }),
   getById: (id) => api.get(`/attendance/${id}`),
-  getTodaySummary: () => api.get('/attendance/summary/today')
+  getTodaySummary: () => api.get('/attendance/summary/today'),
+  getMonthlySummary: (year, month) => api.get('/attendance/summary/monthly', { params: { year, month } })
 };
 
 export const userAPI = {
