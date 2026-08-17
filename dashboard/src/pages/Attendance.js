@@ -16,8 +16,6 @@ const Attendance = () => {
   const [selectedRecord, setSelectedRecord] = useState(null);
 
   const fetchRecords = useCallback(async () => {
-
-  const fetchRecords = async () => {
     setLoading(true);
     try {
       const params = {
