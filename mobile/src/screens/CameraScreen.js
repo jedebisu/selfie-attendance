@@ -50,7 +50,9 @@ export default function CameraScreen({ route, navigation }) {
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
     } catch (error) {
-      Alert.alert('Error', 'Failed to submit. Try again.');
+      console.error('Submit error:', error);
+      const msg = error.response?.data?.error || error.message || 'Failed to submit. Try again.';
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
