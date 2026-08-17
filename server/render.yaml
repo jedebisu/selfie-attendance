@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: selfie-attendance-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run db:migrate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: selfie-attendance-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_SSL
+        value: true
+
+databases:
+  - name: selfie-attendance-db
+    plan: free
+    databaseName: selfie_attendance
+    ipAllowList: []
