@@ -8,8 +8,11 @@ export default function HomeScreen({ navigation }) {
   const [todaySummary, setTodaySummary] = useState(null);
 
   useEffect(() => {
-    fetchTodaySummary();
-  }, []);
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchTodaySummary();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const fetchTodaySummary = async () => {
     try {

@@ -15,7 +15,9 @@ const processAttendancePhoto = async ({
   try {
     // Get image metadata
     const metadata = await sharp(inputPath).metadata();
-    
+    const width = metadata.width;
+    const height = metadata.height;
+
     // Prepare text overlays
     const dateStr = timestamp.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -29,71 +31,43 @@ const processAttendancePhoto = async ({
       hour12: true
     });
 
-    let locationText = '';
+    let locationLine = '';
     if (latitude && longitude) {
-      locationText = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      locationLine = `📍 ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
     }
     if (locationName) {
-      locationText = locationName + (locationText ? ` (${locationText})` : '');
+      locationLine = `📍 ${locationName}`;
     }
 
-    // Create text overlay SVGs
-    const width = metadata.width;
-    const height = metadata.height;
-    
-    // Top banner for timestamp
-    const timestampSvg = `
-      <svg width="${width}" height="80">
+    const overlayHeight = locationLine ? 110 : 80;
+
+    const overlaySvg = `
+      <svg width="${width}" height="${overlayHeight}">
         <defs>
-          <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" style="stop-color:rgba(0,0,0,0.8);stop-opacity:1" />
+          <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:rgba(0,0,0,0.75);stop-opacity:1" />
             <stop offset="100%" style="stop-color:rgba(0,0,0,0);stop-opacity:0" />
           </linearGradient>
         </defs>
-        <rect width="100%" height="100%" fill="url(#gradient)"/>
-        <text x="20" y="35" font-family="Arial, sans-serif" font-size="28" fill="white" font-weight="bold">
+        <rect width="260" height="${overlayHeight}" fill="url(#gradient)" rx="8"/>
+        <text x="16" y="32" font-family="Arial, sans-serif" font-size="22" fill="white" font-weight="bold">
           ${dateStr}
         </text>
-        <text x="20" y="65" font-family="Arial, sans-serif" font-size="24" fill="#4CAF50" font-weight="bold">
+        <text x="16" y="60" font-family="Arial, sans-serif" font-size="20" fill="#4CAF50" font-weight="bold">
           ${timeStr}
         </text>
+        ${locationLine ? `<text x="16" y="88" font-family="Arial, sans-serif" font-size="16" fill="white">${locationLine}</text>` : ''}
       </svg>
     `;
 
-    // Bottom banner for location
-    const locationSvg = locationText ? `
-      <svg width="${width}" height="60">
-        <defs>
-          <linearGradient id="gradient2" x1="0%" y1="100%" x2="0%" y2="0%">
-            <stop offset="0%" style="stop-color:rgba(0,0,0,0.8);stop-opacity:1" />
-            <stop offset="100%" style="stop-color:rgba(0,0,0,0);stop-opacity:0" />
-          </linearGradient>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#gradient2)"/>
-        <text x="20" y="40" font-family="Arial, sans-serif" font-size="20" fill="white">
-          📍 ${locationText}
-        </text>
-      </svg>
-    ` : null;
-
-    // Process image
+    // Process image - single overlay at lower left
     let image = sharp(inputPath);
 
-    // Add timestamp overlay
     image = image.composite([{
-      input: Buffer.from(timestampSvg),
-      top: 0,
+      input: Buffer.from(overlaySvg),
+      top: height - overlayHeight - 16,
       left: 0
     }]);
-
-    // Add location overlay if available
-    if (locationSvg) {
-      image = image.composite([{
-        input: Buffer.from(locationSvg),
-        top: height - 60,
-        left: 0
-      }]);
-    }
 
     // Save processed image
     await image
