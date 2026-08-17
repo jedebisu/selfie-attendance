@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { attendanceAPI } from '../services/api';
 import { format } from 'date-fns';
@@ -37,11 +37,7 @@ const MapView = () => {
   const [loading, setLoading] = useState(true);
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
-  useEffect(() => {
-    fetchRecords();
-  }, [date]);
-
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
       const res = await attendanceAPI.getAll({ date, limit: 100 });
@@ -53,7 +49,11 @@ const MapView = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [date]);
+
+  useEffect(() => {
+    fetchRecords();
+  }, [fetchRecords]);
 
   // Calculate center of map
   const getCenter = () => {

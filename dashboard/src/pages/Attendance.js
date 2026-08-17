@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { attendanceAPI } from '../services/api';
 import { format } from 'date-fns';
 import { Download, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -15,9 +15,7 @@ const Attendance = () => {
   });
   const [selectedRecord, setSelectedRecord] = useState(null);
 
-  useEffect(() => {
-    fetchRecords();
-  }, [pagination.page, filters]);
+  const fetchRecords = useCallback(async () => {
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -43,7 +41,11 @@ const Attendance = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.page, pagination.limit, filters]);
+
+  useEffect(() => {
+    fetchRecords();
+  }, [fetchRecords]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
