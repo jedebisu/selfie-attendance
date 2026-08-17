@@ -1,11 +1,6 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
 
-const BASE_URL = Platform.select({
-  android: 'http://192.168.254.125:3001/api',
-  ios: 'http://192.168.254.125:3001/api',
-  default: 'http://192.168.254.125:3001/api'
-});
+const BASE_URL = 'https://selfie-api-sqgh.onrender.com/api';
 
 export const api = axios.create({
   baseURL: BASE_URL,
