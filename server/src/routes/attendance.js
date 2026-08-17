@@ -196,4 +196,90 @@ router.get('/summary/today', authenticateToken, async (req, res) => {
   }
 });
 
+// Get monthly attendance summary per user
+router.get('/summary/monthly', authenticateToken, async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    if (!year || !month) {
+      return res.status(400).json({ error: 'year and month are required' });
+    }
+
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endMonth = parseInt(month);
+    const nextMonth = endMonth === 12 ? 1 : endMonth + 1;
+    const nextYear = endMonth === 12 ? parseInt(year) + 1 : parseInt(year);
+    const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    const result = await pool.query(
+      `SELECT 
+        u.id as user_id,
+        u.name,
+        u.employee_id,
+        a.id as attendance_id,
+        a.status,
+        a.timestamp,
+        a.photo_url,
+        a.latitude,
+        a.longitude,
+        DATE(a.timestamp) as attendance_date
+       FROM users u
+       LEFT JOIN attendance a ON u.id = a.user_id 
+         AND a.timestamp >= $1 
+         AND a.timestamp < $2
+       WHERE u.is_active = true
+       ORDER BY u.name, a.timestamp`,
+      [startDate, endDate]
+    );
+
+    // Group by user, then by date
+    const users = {};
+    for (const row of result.rows) {
+      if (!users[row.user_id]) {
+        users[row.user_id] = {
+          user_id: row.user_id,
+          name: row.name,
+          employee_id: row.employee_id,
+          days: {}
+        };
+      }
+      if (row.attendance_id) {
+        const dateKey = row.attendance_date;
+        if (!users[row.user_id].days[dateKey]) {
+          users[row.user_id].days[dateKey] = {
+            date: dateKey,
+            status: 'absent',
+            clock_in: null,
+            clock_out: null,
+            records: []
+          };
+        }
+        users[row.user_id].days[dateKey].records.push({
+          id: row.attendance_id,
+          status: row.status,
+          timestamp: row.timestamp,
+          photo_url: row.photo_url,
+          latitude: row.latitude,
+          longitude: row.longitude
+        });
+        if (row.status === 'clock_in') {
+          users[row.user_id].days[dateKey].clock_in = row.timestamp;
+          users[row.user_id].days[dateKey].status = 'present';
+        }
+        if (row.status === 'clock_out') {
+          users[row.user_id].days[dateKey].clock_out = row.timestamp;
+        }
+      }
+    }
+
+    res.json({
+      year: parseInt(year),
+      month: parseInt(month),
+      users: Object.values(users)
+    });
+  } catch (error) {
+    console.error('Error fetching monthly summary:', error);
+    res.status(500).json({ error: 'Failed to fetch monthly summary' });
+  }
+});
+
 module.exports = router;

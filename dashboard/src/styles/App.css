@@ -672,3 +672,252 @@ body {
   display: flex;
   gap: 4px;
 }
+
+/* Calendar Page */
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.calendar-month-label {
+  font-size: 20px;
+  font-weight: 600;
+  min-width: 200px;
+  text-align: center;
+}
+
+.cal-card {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.cal-scroll {
+  overflow-x: auto;
+}
+
+.cal-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.cal-table th,
+.cal-table td {
+  padding: 8px 4px;
+  text-align: center;
+  border: 1px solid var(--gray-200);
+  font-size: 12px;
+}
+
+.cal-name-header {
+  min-width: 160px;
+  text-align: left !important;
+  padding-left: 16px !important;
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 2;
+  font-weight: 600;
+  color: var(--gray-500);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.cal-day-header {
+  min-width: 36px;
+  padding: 6px 2px !important;
+}
+
+.cal-day-header .day-num {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.cal-day-header .day-label {
+  display: block;
+  font-size: 10px;
+  color: var(--gray-500);
+  font-weight: 400;
+}
+
+.cal-day-header.weekend {
+  background: #fafafa;
+}
+
+.cal-day-header.weekend .day-num,
+.cal-day-header.weekend .day-label {
+  color: var(--gray-300);
+}
+
+.cal-day-header.today .day-num {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.cal-day-header.today {
+  background: #e3f2fd;
+}
+
+.cal-summary-header {
+  min-width: 40px;
+  font-weight: 600 !important;
+}
+
+.cal-name-cell {
+  text-align: left !important;
+  padding-left: 12px !important;
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 1;
+  border-right: 2px solid var(--gray-200) !important;
+}
+
+.cal-employee {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cal-employee .avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.cal-employee .name {
+  display: block;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.cal-employee .id {
+  display: block;
+  font-size: 11px;
+  color: var(--gray-500);
+}
+
+.cal-cell {
+  cursor: pointer;
+  transition: background 0.15s;
+  height: 36px;
+}
+
+.cal-cell:hover {
+  background: #f0f0f0;
+}
+
+.cal-cell.weekend {
+  background: #fafafa;
+}
+
+.cal-cell.present {
+  background: #f0fdf4;
+}
+
+.cal-cell.present.full {
+  background: #dcfce7;
+}
+
+.cal-cell.present:hover,
+.cal-cell.present.full:hover {
+  background: #bbf7d0;
+}
+
+.cal-cell.absent {
+  color: var(--gray-300);
+}
+
+.cal-punch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.cal-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--success);
+  color: white;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.cal-checkout-dot {
+  font-size: 10px;
+  color: var(--success);
+  font-weight: 700;
+}
+
+.cal-absent-badge {
+  color: var(--gray-300);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.cal-summary-cell {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.present-count {
+  color: var(--success);
+}
+
+.absent-count {
+  color: var(--danger);
+}
+
+.cal-legend {
+  display: flex;
+  gap: 24px;
+  padding: 16px 0;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.cal-legend-dot.present { background: #dcfce7; border: 1px solid var(--success); }
+.cal-legend-dot.absent { background: var(--gray-200); border: 1px solid var(--gray-300); }
+.cal-legend-dot.weekend { background: #fafafa; border: 1px solid var(--gray-200); }
+
+.cal-legend-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.cal-legend-badge.full { background: var(--success); }
