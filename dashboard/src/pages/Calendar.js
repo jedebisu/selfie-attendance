@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { attendanceAPI } from '../services/api';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
-  getDay, isToday, isWeekend, addMonths, subMonths, startOfWeek, endOfWeek
+  isToday, isWeekend, addMonths, subMonths, startOfWeek, endOfWeek
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -127,8 +127,6 @@ const Calendar = () => {
     const dayData = user.days[dateKey];
     setSelectedUser({ user, day, dayData });
   };
-
-  const totalP = data.reduce((s, u) => s + Object.values(u.days).filter(d => d.clock_in).length, 0);
 
   return (
     <div className="calendar-page">
