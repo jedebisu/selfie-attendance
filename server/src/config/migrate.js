@@ -114,9 +114,18 @@ const createTables = async () => {
         naps_status VARCHAR(50),
         olt_id VARCHAR(100),
         sell_status VARCHAR(50),
+        barangay_name VARCHAR(100),
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
+    `);
+
+    // Add barangay_name column if it doesn't exist (for existing databases)
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE naps ADD COLUMN IF NOT EXISTS barangay_name VARCHAR(100);
+      EXCEPTION WHEN duplicate_column THEN null;
+      END $$;
     `);
 
     await client.query(`
