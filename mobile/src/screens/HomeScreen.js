@@ -163,6 +163,13 @@ const HomeScreen = ({ navigation }) => {
       >
         <Text style={[styles.historyButtonText, { color: '#fff' }]}>CVN | CVS Naps</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={[styles.historyButton, { backgroundColor: '#c8956c', marginTop: 12 }]} 
+        onPress={() => navigation.navigate('NapSearch')}
+      >
+        <Text style={[styles.historyButtonText, { color: '#fff' }]}>Find NAP</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 };
