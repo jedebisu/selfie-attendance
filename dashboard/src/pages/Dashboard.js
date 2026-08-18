@@ -16,7 +16,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 30000); // Refresh every 30s
+    const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -59,37 +59,41 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard">
-      <h1>Dashboard</h1>
-      <p className="subtitle">Today's attendance overview - {format(new Date(), 'MMMM dd, yyyy')}</p>
+      <div className="page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p className="subtitle">{format(new Date(), 'EEEE, MMMM dd, yyyy')}</p>
+        </div>
+      </div>
 
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-icon blue"><Users size={24} /></div>
-          <div className="stat-info">
+          <div className="stat-icon blue"><Users size={22} /></div>
+          <div>
             <span className="stat-value">{stats.totalEmployees}</span>
             <span className="stat-label">Total Employees</span>
           </div>
         </div>
         
         <div className="stat-card">
-          <div className="stat-icon green"><CheckCircle size={24} /></div>
-          <div className="stat-info">
+          <div className="stat-icon green"><CheckCircle size={22} /></div>
+          <div>
             <span className="stat-value">{stats.clockedIn}</span>
             <span className="stat-label">Clocked In</span>
           </div>
         </div>
         
         <div className="stat-card">
-          <div className="stat-icon orange"><Clock size={24} /></div>
-          <div className="stat-info">
+          <div className="stat-icon orange"><Clock size={22} /></div>
+          <div>
             <span className="stat-value">{stats.pending}</span>
             <span className="stat-label">Pending</span>
           </div>
         </div>
         
         <div className="stat-card">
-          <div className="stat-icon purple"><AlertCircle size={24} /></div>
-          <div className="stat-info">
+          <div className="stat-icon purple"><AlertCircle size={22} /></div>
+          <div>
             <span className="stat-value">{stats.totalToday}</span>
             <span className="stat-label">Total Entries</span>
           </div>

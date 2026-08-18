@@ -24,7 +24,7 @@ const Layout = () => {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <img src="/logo.png" alt="Logo" className="sidebar-logo" />
+          <img src="/logo.png" alt="EBISU" className="sidebar-logo" />
           <h2>EBISU T&A</h2>
         </div>
 
@@ -36,7 +36,7 @@ const Layout = () => {
               end={to === '/'}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
-              <Icon size={20} />
+              <Icon size={19} />
               <span>{label}</span>
             </NavLink>
           ))}
@@ -51,7 +51,7 @@ const Layout = () => {
             </div>
           </div>
           <button onClick={handleLogout} className="logout-btn">
-            <LogOut size={20} />
+            <LogOut size={18} />
           </button>
         </div>
       </aside>
