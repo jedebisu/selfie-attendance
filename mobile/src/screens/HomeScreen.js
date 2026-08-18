@@ -1,152 +1,325 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { attendanceAPI } from '../services/api';
+import { getCachedTodaySummary, cacheTodaySummary } from '../services/cache';
+import { checkConnection } from '../services/network';
+import { getQueueLength } from '../services/offlineQueue';
 import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notifications';
 
-export default function HomeScreen({ navigation }) {
+const HomeScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
   const [todaySummary, setTodaySummary] = useState(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => { fetchTodaySummary(); });
-    return unsubscribe;
-  }, [navigation]);
-
-  const fetchTodaySummary = async () => {
+  const fetchTodaySummary = useCallback(async () => {
     try {
-      const res = await attendanceAPI.getTodaySummary();
-      const data = res.data || [];
-      const myRecord = data.find(r => r.id === user.id);
-      setTodaySummary(myRecord);
+      const connected = await checkConnection();
+      setIsOnline(connected);
+
+      if (connected) {
+        const summary = await attendanceAPI.getTodaySummary();
+        setTodaySummary(summary);
+        await cacheTodaySummary(summary);
+      } else {
+        const cached = await getCachedTodaySummary();
+        if (cached) setTodaySummary(cached);
+      }
+
+      const queueLen = await getQueueLength();
+      setPendingCount(queueLen);
     } catch (error) {
-      console.error('Error fetching summary:', error);
+      const cached = await getCachedTodaySummary();
+      if (cached) setTodaySummary(cached);
     }
-  };
+  }, []);
 
-  const formatTime = (timestamp) => {
-    if (!timestamp) return '--:--';
-    return new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  };
-
-  const hasClockedIn = !!todaySummary?.first_clock_in;
+  useFocusEffect(
+    useCallback(() => {
+      fetchTodaySummary();
+    }, [fetchTodaySummary])
+  );
 
   useEffect(() => {
-    if (hasClockedIn && !todaySummary?.last_clock_out) {
+    if (todaySummary?.clock_in && !todaySummary?.clock_out) {
       scheduleClockOutReminder();
     } else {
       cancelAllReminders();
     }
-  }, [hasClockedIn, todaySummary]);
+  }, [todaySummary]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchTodaySummary();
+    setRefreshing(false);
+  };
+
+  const handleClockIn = () => {
+    navigation.navigate('Camera', { status: 'clock_in' });
+  };
+
+  const handleClockOut = () => {
+    navigation.navigate('Camera', { status: 'clock_out' });
+  };
+
+  const handleLogout = () => {
+    logout();
+  };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
       <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <Image source={require('../../assets/logo.png')} style={styles.headerLogo} resizeMode="contain" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>Hello, {user?.name?.split(' ')[0]}</Text>
-            <Text style={styles.employeeId}>{user?.employee_id}</Text>
-          </View>
-          <TouchableOpacity onPress={() => Alert.alert('Logout', 'Are you sure?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Logout', onPress: logout, style: 'destructive' }
-          ])} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}> Logout</Text>
+        <View style={styles.headerTop}>
+          <Text style={styles.greeting}>Hello, {user?.name || 'User'}!</Text>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
         </View>
+        <Text style={styles.date}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
+        
+        {!isOnline && (
+          <View style={styles.offlineBadge}>
+            <Text style={styles.offlineText}>📡 Offline Mode</Text>
+          </View>
+        )}
+        
+        {pendingCount > 0 && (
+          <View style={styles.pendingBadge}>
+            <Text style={styles.pendingText}>⏳ {pendingCount} pending sync</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.statusCard}>
-        <View style={styles.statusRow}>
-          <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: '#4ade80' }]} />
-            <Text style={styles.statusLabel}>Clock In</Text>
-            <Text style={styles.statusValue}>{formatTime(todaySummary?.first_clock_in)}</Text>
+        <Text style={styles.statusTitle}>Today's Status</Text>
+        
+        <View style={styles.timeRow}>
+          <View style={styles.timeBlock}>
+            <Text style={styles.timeLabel}>Clock In</Text>
+            <Text style={styles.timeValue}>
+              {todaySummary?.clock_in
+                ? new Date(todaySummary.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                : '--:--'}
+            </Text>
           </View>
-          <View style={styles.statusDivider} />
-          <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: '#f87171' }]} />
-            <Text style={styles.statusLabel}>Clock Out</Text>
-            <Text style={styles.statusValue}>{formatTime(todaySummary?.last_clock_out)}</Text>
-          </View>
-          <View style={styles.statusDivider} />
-          <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: '#60a5fa' }]} />
-            <Text style={styles.statusLabel}>Entries</Text>
-            <Text style={styles.statusValue}>{todaySummary?.clock_in_count || 0}</Text>
+          
+          <View style={styles.timeDivider} />
+          
+          <View style={styles.timeBlock}>
+            <Text style={styles.timeLabel}>Clock Out</Text>
+            <Text style={styles.timeValue}>
+              {todaySummary?.clock_out
+                ? new Date(todaySummary.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                : '--:--'}
+            </Text>
           </View>
         </View>
+
+        {todaySummary?.clock_in && todaySummary?.clock_out && (
+          <View style={styles.hoursBlock}>
+            <Text style={styles.hoursLabel}>Hours Worked</Text>
+            <Text style={styles.hoursValue}>
+              {(() => {
+                const diff = new Date(todaySummary.clock_out) - new Date(todaySummary.clock_in);
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                return `${hours}h ${mins}m`;
+              })()}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => navigation.navigate('Camera', { status: 'clock_in' })}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.primaryIcon}>Clock In</Text>
-          <Text style={styles.primarySubtext}>Take a selfie to start your day</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.secondaryButton, !hasClockedIn && styles.disabledButton]}
-          onPress={() => Alert.alert('Confirm Clock Out', 'Are you sure?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Clock Out', onPress: () => navigation.navigate('Camera', { status: 'clock_out' }) }
-          ])}
-          disabled={!hasClockedIn}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.secondaryIcon}>Clock Out</Text>
-        </TouchableOpacity>
+        {!todaySummary?.clock_in ? (
+          <TouchableOpacity style={[styles.actionButton, styles.clockInButton]} onPress={handleClockIn}>
+            <Text style={styles.actionButtonText}>Clock In</Text>
+          </TouchableOpacity>
+        ) : !todaySummary?.clock_out ? (
+          <TouchableOpacity style={[styles.actionButton, styles.clockOutButton]} onPress={handleClockOut}>
+            <Text style={styles.actionButtonText}>Clock Out</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.completedBadge}>
+            <Text style={styles.completedText}>✓ Day Complete</Text>
+          </View>
+        )}
       </View>
 
-      <TouchableOpacity style={styles.historyLink} onPress={() => navigation.navigate('History')} activeOpacity={0.7}>
-        <Text style={styles.historyText}>View Attendance History</Text>
+      <TouchableOpacity style={styles.historyButton} onPress={() => navigation.navigate('History')}>
+        <Text style={styles.historyButtonText}>View History</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f2f5' },
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  contentContainer: {
+    padding: 20,
+  },
   header: {
-    backgroundColor: '#1a1d23', paddingTop: 60, paddingBottom: 28, paddingHorizontal: 24,
-    borderBottomLeftRadius: 32, borderBottomRightRadius: 32,
+    marginBottom: 24,
   },
-  headerRow: { flexDirection: 'row', alignItems: 'center' },
-  headerLogo: { width: 44, height: 44, marginRight: 14, borderRadius: 12 },
-  greeting: { fontSize: 22, fontWeight: '700', color: '#fff' },
-  employeeId: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 2, letterSpacing: 1 },
-  logoutBtn: { paddingHorizontal: 12, paddingVertical: 8 },
-  logoutText: { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
-
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  greeting: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1a1d23',
+  },
+  logoutButton: {
+    padding: 8,
+  },
+  logoutText: {
+    color: '#ef4444',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  date: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 4,
+  },
+  offlineBadge: {
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: 12,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  pendingBadge: {
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  pendingText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   statusCard: {
-    backgroundColor: '#fff', borderRadius: 20, padding: 20, marginTop: -14, marginHorizontal: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  statusRow: { flexDirection: 'row', alignItems: 'center' },
-  statusItem: { flex: 1, alignItems: 'center' },
-  statusDot: { width: 8, height: 8, borderRadius: 4, marginBottom: 8 },
-  statusLabel: { fontSize: 11, color: '#9ca3af', marginBottom: 4, letterSpacing: 0.5 },
-  statusValue: { fontSize: 18, fontWeight: '700', color: '#1a1d23' },
-  statusDivider: { width: 1, height: 36, backgroundColor: '#e5e7eb' },
-
-  buttonContainer: { marginTop: 28, paddingHorizontal: 20, gap: 14 },
-  primaryButton: {
-    backgroundColor: '#1a1d23', borderRadius: 20, padding: 24, alignItems: 'center',
-    shadowColor: '#1a1d23', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 6,
+  statusTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1d23',
+    marginBottom: 20,
   },
-  primaryIcon: { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: 1 },
-  primarySubtext: { color: 'rgba(255,255,255,0.6)', fontSize: 13, marginTop: 6 },
-  secondaryButton: {
-    backgroundColor: '#fff', borderRadius: 20, padding: 22, alignItems: 'center',
-    borderWidth: 1.5, borderColor: '#e5e7eb',
+  timeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
   },
-  disabledButton: { opacity: 0.4 },
-  secondaryIcon: { color: '#1a1d23', fontSize: 20, fontWeight: '700', letterSpacing: 0.5 },
-
-  historyLink: { alignItems: 'center', paddingTop: 24, paddingBottom: 16 },
-  historyText: { color: '#6b7280', fontSize: 14, fontWeight: '500', letterSpacing: 0.3 },
+  timeBlock: {
+    alignItems: 'center',
+  },
+  timeLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  timeValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#1a1d23',
+  },
+  timeDivider: {
+    width: 1,
+    height: 60,
+    backgroundColor: '#e5e7eb',
+  },
+  hoursBlock: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    alignItems: 'center',
+  },
+  hoursLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  hoursValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#22c55e',
+  },
+  buttonContainer: {
+    marginBottom: 16,
+  },
+  actionButton: {
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  clockInButton: {
+    backgroundColor: '#22c55e',
+  },
+  clockOutButton: {
+    backgroundColor: '#ef4444',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  completedBadge: {
+    backgroundColor: '#22c55e',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  completedText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  historyButton: {
+    backgroundColor: '#fff',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  historyButtonText: {
+    color: '#1a1d23',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
+
+export default HomeScreen;
