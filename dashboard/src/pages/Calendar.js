@@ -61,7 +61,7 @@ const SingleCalendar = ({ user, monthDate, onClickDay }) => {
           let cellBg = 'transparent';
           let cellColor = '#ccc';
 
-          if (inMonth && !weekend) {
+          if (inMonth) {
             if (isPresent) {
               status = 'P';
               cellBg = STATUS_COLORS.P.bg;
@@ -76,7 +76,7 @@ const SingleCalendar = ({ user, monthDate, onClickDay }) => {
           return (
             <div
               key={i}
-              className={`emp-cal-day${!inMonth ? ' outside' : ''}${weekend ? ' weekend' : ''}${today ? ' today' : ''}${status ? ' has-status' : ''}`}
+              className={`emp-cal-day${!inMonth ? ' outside' : ''}${today ? ' today' : ''}${status ? ' has-status' : ''}`}
               style={status ? { backgroundColor: cellBg, color: cellColor } : {}}
               title={status ? `${format(day, 'MMM d')}: ${STATUS_COLORS[status].label}` : format(day, 'MMM d')}
               onClick={() => inMonth && onClickDay(day, user)}
@@ -146,7 +146,6 @@ const Calendar = () => {
         <span className="legend-item"><span className="cal-legend-swatch" style={{ background: STATUS_COLORS.P.bg, border: `1px solid ${STATUS_COLORS.P.color}` }} /> P = Present</span>
         <span className="legend-item"><span className="cal-legend-swatch" style={{ background: STATUS_COLORS.A.bg, border: `1px solid ${STATUS_COLORS.A.color}` }} /> A = Absent</span>
         <span className="legend-item"><span className="cal-legend-swatch" style={{ background: STATUS_COLORS.L.bg, border: `1px solid ${STATUS_COLORS.L.color}` }} /> L = On Leave</span>
-        <span className="legend-item"><span className="cal-legend-swatch weekend" /> Weekend</span>
         <span className="legend-item"><span className="cal-legend-swatch today-swatch" /> Today</span>
       </div>
 
