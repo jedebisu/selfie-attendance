@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { attendanceAPI } from '../services/api';
+import { attendanceAPI, leaveAPI } from '../services/api';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   isToday, isWeekend, addMonths, subMonths, startOfWeek, endOfWeek
@@ -15,7 +15,7 @@ const STATUS_COLORS = {
   L: { bg: '#dbeafe', color: '#1e40af', label: 'On Leave' },
 };
 
-const SingleCalendar = ({ user, monthDate, onClickDay }) => {
+const SingleCalendar = ({ user, monthDate, onClickDay, leaveDates }) => {
   const monthStart = startOfMonth(monthDate);
   const monthEnd = endOfMonth(monthDate);
   const calStart = startOfWeek(monthStart);
@@ -23,10 +23,14 @@ const SingleCalendar = ({ user, monthDate, onClickDay }) => {
   const allDays = eachDayOfInterval({ start: calStart, end: calEnd });
 
   const presentDays = Object.keys(user.days).filter(d => user.days[d].clock_in).length;
+  const leaveDays = allDays.filter(d => {
+    const dateKey = format(d, 'yyyy-MM-dd');
+    return leaveDates.has(dateKey) && d >= monthStart && d <= monthEnd && !isWeekend(d);
+  }).length;
   const totalWorkdays = allDays.filter(d =>
     !isWeekend(d) && d >= monthStart && d <= monthEnd
   ).length;
-  const absentDays = totalWorkdays - presentDays;
+  const absentDays = totalWorkdays - presentDays - leaveDays;
 
   return (
     <div className="emp-cal-card">
@@ -40,8 +44,8 @@ const SingleCalendar = ({ user, monthDate, onClickDay }) => {
         </div>
         <div className="emp-cal-summary">
           <span className="emp-cal-stat present">{presentDays}P</span>
-          <span className="emp-cal-stat absent">{absentDays}A</span>
-          <span className="emp-cal-stat leave">0L</span>
+          <span className="emp-cal-stat absent">{Math.max(0, absentDays)}A</span>
+          <span className="emp-cal-stat leave">{leaveDays}L</span>
         </div>
       </div>
 
@@ -56,6 +60,7 @@ const SingleCalendar = ({ user, monthDate, onClickDay }) => {
           const dateKey = format(day, 'yyyy-MM-dd');
           const dayData = user.days[dateKey];
           const isPresent = dayData && dayData.clock_in;
+          const isLeave = leaveDates.has(dateKey);
 
           let status = null;
           let cellBg = 'transparent';
@@ -66,6 +71,10 @@ const SingleCalendar = ({ user, monthDate, onClickDay }) => {
               status = 'P';
               cellBg = STATUS_COLORS.P.bg;
               cellColor = STATUS_COLORS.P.color;
+            } else if (isLeave) {
+              status = 'L';
+              cellBg = STATUS_COLORS.L.bg;
+              cellColor = STATUS_COLORS.L.color;
             } else {
               status = 'A';
               cellBg = STATUS_COLORS.A.bg;
@@ -94,6 +103,7 @@ const SingleCalendar = ({ user, monthDate, onClickDay }) => {
 const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [data, setData] = useState([]);
+  const [leaveDates, setLeaveDates] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState(null);
 
@@ -103,19 +113,26 @@ const Calendar = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await attendanceAPI.getMonthlySummary(year, month);
-      setData(res.data.users || []);
+      const [attendRes, leaveRes] = await Promise.all([
+        attendanceAPI.getMonthlySummary(year, month),
+        leaveAPI.getMonth(year, month)
+      ]);
+      setData(attendRes.data.users || []);
+
+      const dates = new Set();
+      (leaveRes.data || []).forEach(l => {
+        if (l.status === 'approved') dates.add(l.leave_date);
+      });
+      setLeaveDates(dates);
     } catch (error) {
-      console.error('Error fetching monthly data:', error);
-      toast.error('Failed to load attendance data');
+      console.error('Error fetching calendar data:', error);
+      toast.error('Failed to load calendar data');
     } finally {
       setLoading(false);
     }
   }, [year, month]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const navigateMonth = (dir) => {
     setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
@@ -163,6 +180,7 @@ const Calendar = () => {
                   user={user}
                   monthDate={currentDate}
                   onClickDay={onClickDay}
+                  leaveDates={leaveDates}
                 />
               ))
             )}
@@ -196,6 +214,8 @@ const Calendar = () => {
                         ))}
                       </tbody>
                     </table>
+                  ) : leaveDates.has(format(selectedUser.day, 'yyyy-MM-dd')) ? (
+                    <p className="no-data" style={{ color: '#1e40af' }}>On Leave</p>
                   ) : (
                     <p className="no-data">No records — Absent</p>
                   )}

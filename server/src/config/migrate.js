@@ -75,6 +75,25 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_users_employee_id ON users(employee_id);
     `);
 
+    // Leave requests table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leave_requests (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        leave_date DATE NOT NULL,
+        reason VARCHAR(500) NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+        approved_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leave_user_id ON leave_requests(user_id);
+      CREATE INDEX IF NOT EXISTS idx_leave_date ON leave_requests(leave_date);
+    `);
+
     await client.query('COMMIT');
     console.log('Database tables created successfully!');
   } catch (error) {

@@ -7,6 +7,8 @@ const { pool } = require('./config/database');
 const attendanceRoutes = require('./routes/attendance');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const leaveRoutes = require('./routes/leave');
+const exportRoutes = require('./routes/export');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -26,6 +28,8 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/leave', leaveRoutes);
+app.use('/api/export', exportRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

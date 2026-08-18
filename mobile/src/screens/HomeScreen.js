@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { attendanceAPI } from '../services/api';
+import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notifications';
 
 export default function HomeScreen({ navigation }) {
   const { user, logout } = useAuth();
@@ -29,6 +30,14 @@ export default function HomeScreen({ navigation }) {
   };
 
   const hasClockedIn = !!todaySummary?.first_clock_in;
+
+  useEffect(() => {
+    if (hasClockedIn && !todaySummary?.last_clock_out) {
+      scheduleClockOutReminder();
+    } else {
+      cancelAllReminders();
+    }
+  }, [hasClockedIn, todaySummary]);
 
   return (
     <View style={styles.container}>
