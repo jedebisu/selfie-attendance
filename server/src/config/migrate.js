@@ -14,11 +14,20 @@ const createTables = async () => {
         employee_id VARCHAR(50) UNIQUE NOT NULL,
         name VARCHAR(100) NOT NULL,
         email VARCHAR(100) UNIQUE,
-        pin VARCHAR(10) NOT NULL,
+        pin VARCHAR(60) NOT NULL,
         is_active BOOLEAN DEFAULT true,
+        is_admin BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
+    `);
+
+    // Add is_admin column if it doesn't exist (for existing databases)
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+      EXCEPTION WHEN duplicate_column THEN null;
+      END $$;
     `);
 
     // Attendance records table

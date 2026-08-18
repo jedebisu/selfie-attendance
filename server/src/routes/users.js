@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
 const { pool } = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // Get all users
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, employee_id, name, email, is_active, created_at FROM users ORDER BY name'
+      'SELECT id, employee_id, name, email, is_active, is_admin, created_at FROM users ORDER BY name'
     );
     res.json(result.rows);
   } catch (error) {
@@ -21,7 +22,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      'SELECT id, employee_id, name, email, is_active, created_at FROM users WHERE id = $1',
+      'SELECT id, employee_id, name, email, is_active, is_admin, created_at FROM users WHERE id = $1',
       [id]
     );
 
@@ -37,19 +38,23 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // Create user (admin only)
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { employee_id, name, email, pin } = req.body;
+    const { employee_id, name, email, pin, is_admin } = req.body;
 
     if (!employee_id || !name || !pin) {
       return res.status(400).json({ error: 'Employee ID, name, and PIN are required' });
     }
 
+    // Hash PIN
+    const salt = await bcrypt.genSalt(10);
+    const hashedPin = await bcrypt.hash(pin, salt);
+
     const result = await pool.query(
-      `INSERT INTO users (employee_id, name, email, pin)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, employee_id, name, email, created_at`,
-      [employee_id, name, email || null, pin]
+      `INSERT INTO users (employee_id, name, email, pin, is_admin)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, employee_id, name, email, is_admin, created_at`,
+      [employee_id, name, email || null, hashedPin, is_admin || false]
     );
 
     res.status(201).json({
@@ -65,11 +70,18 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Update user
-router.put('/:id', authenticateToken, async (req, res) => {
+// Update user (admin only for most fields; users can update their own name/email)
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, pin, is_active } = req.body;
+    const { name, email, pin, is_active, is_admin } = req.body;
+
+    // Hash PIN if provided
+    let hashedPin = null;
+    if (pin) {
+      const salt = await bcrypt.genSalt(10);
+      hashedPin = await bcrypt.hash(pin, salt);
+    }
 
     const result = await pool.query(
       `UPDATE users 
@@ -77,10 +89,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
            email = COALESCE($2, email),
            pin = COALESCE($3, pin),
            is_active = COALESCE($4, is_active),
+           is_admin = COALESCE($5, is_admin),
            updated_at = NOW()
-       WHERE id = $5
-       RETURNING id, employee_id, name, email, is_active, updated_at`,
-      [name, email, pin, is_active, id]
+       WHERE id = $6
+       RETURNING id, employee_id, name, email, is_active, is_admin, updated_at`,
+      [name, email, hashedPin, is_active, is_admin, id]
     );
 
     if (result.rows.length === 0) {
@@ -97,10 +110,15 @@ router.put('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete user (soft delete)
-router.delete('/:id', authenticateToken, async (req, res) => {
+// Delete user (admin only, soft delete)
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Prevent admin from deleting themselves
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'Cannot deactivate your own account' });
+    }
 
     const result = await pool.query(
       'UPDATE users SET is_active = false WHERE id = $1 RETURNING id',

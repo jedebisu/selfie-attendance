@@ -12,13 +12,15 @@ const Layout = () => {
     navigate('/login');
   };
 
-  const navItems = [
+  const allNavItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/attendance', icon: Clock, label: 'Attendance' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
-    { to: '/users', icon: Users, label: 'Users' },
+    { to: '/users', icon: Users, label: 'Users', adminOnly: true },
     { to: '/map', icon: MapPin, label: 'Map View' },
   ];
+
+  const navItems = allNavItems.filter(item => !item.adminOnly || user?.is_admin);
 
   return (
     <div className="layout">
