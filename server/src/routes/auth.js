@@ -28,7 +28,17 @@ router.post('/login', async (req, res) => {
     const user = result.rows[0];
 
     // Compare PIN with bcrypt hash
-    const pinMatch = await bcrypt.compare(pin, user.pin);
+    let pinMatch = await bcrypt.compare(pin, user.pin);
+
+    // Auto-migrate: if bcrypt fails, check if it's a plaintext PIN and hash it
+    if (!pinMatch && user.pin === pin) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPin = await bcrypt.hash(pin, salt);
+      await pool.query('UPDATE users SET pin = $1 WHERE id = $2', [hashedPin, user.id]);
+      pinMatch = true;
+      console.log(`Auto-hashed PIN for ${user.employee_id}`);
+    }
+
     if (!pinMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
