@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { attendanceAPI } from '../services/api';
+import { attendanceAPI, SERVER_URL } from '../services/api';
 import { format } from 'date-fns';
 import { Users, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 
@@ -156,7 +156,7 @@ const Dashboard = () => {
                     </span>
                   </div>
                   <img 
-                    src={`http://localhost:3001${record.photo_url}`} 
+                    src={`${SERVER_URL}${record.photo_url}`} 
                     alt="" 
                     className="activity-photo"
                   />

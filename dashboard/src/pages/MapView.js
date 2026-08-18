@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { attendanceAPI } from '../services/api';
+import { attendanceAPI, SERVER_URL } from '../services/api';
 import { format } from 'date-fns';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -113,7 +113,7 @@ const MapView = () => {
                   <Popup>
                     <div className="map-popup">
                       <img 
-                        src={`http://localhost:3001${record.photo_url}`} 
+                        src={`${SERVER_URL}${record.photo_url}`} 
                         alt=""
                         className="popup-photo"
                       />

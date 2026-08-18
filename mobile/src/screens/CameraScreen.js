@@ -14,6 +14,25 @@ export default function CameraScreen({ route, navigation }) {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [locationError, setLocationError] = useState(null);
 
+  const fetchLocation = async () => {
+    try {
+      const locStatus = await Location.requestForegroundPermissionsAsync();
+      if (locStatus.status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        setLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+        setLocationError(null);
+      } else {
+        setLocationError('Location permission denied');
+      }
+    } catch (e) {
+      setLocationError('Failed to get location. Tap to retry.');
+    }
+  };
+
+  useEffect(() => {
+    fetchLocation();
+  }, []);
+
   useEffect(() => {
     (async () => {
       const camStatus = await requestCameraPermission();
@@ -21,13 +40,6 @@ export default function CameraScreen({ route, navigation }) {
         Alert.alert('Permission Required', 'Camera permission is needed.', [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]);
-      }
-      const locStatus = await Location.requestForegroundPermissionsAsync();
-      if (locStatus.status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        setLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-      } else {
-        setLocationError('Location permission denied');
       }
     })();
   }, []);
@@ -72,7 +84,11 @@ export default function CameraScreen({ route, navigation }) {
           <Text style={styles.timeText}>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</Text>
           <Text style={styles.dateText}>{new Date().toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</Text>
           {location && <Text style={styles.locationText}>📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</Text>}
-          {locationError && <Text style={styles.locationError}>⚠️ {locationError}</Text>}
+          {locationError && (
+            <TouchableOpacity onPress={fetchLocation}>
+              <Text style={styles.locationError}>⚠️ {locationError}</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <View style={styles.captureContainer}>
           <TouchableOpacity style={[styles.captureButton, loading && { opacity: 0.5 }]} onPress={takePicture} disabled={loading}>
