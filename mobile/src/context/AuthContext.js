@@ -1,8 +1,9 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api } from '../services/api';
+import { attendanceAPI } from '../services/api';
+import { syncOnStartup, startSyncOnConnect } from '../services/syncService';
 
-const AuthContext = createContext({});
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -13,14 +14,22 @@ export const AuthProvider = ({ children }) => {
     loadStoredAuth();
   }, []);
 
+  useEffect(() => {
+    if (user && token) {
+      syncOnStartup();
+      const unsubscribe = startSyncOnConnect();
+      return unsubscribe;
+    }
+  }, [user, token]);
+
   const loadStoredAuth = async () => {
     try {
-      const storedToken = await AsyncStorage.getItem('token');
-      const storedUser = await AsyncStorage.getItem('user');
+      const storedToken = await AsyncStorage.getItem('auth_token');
+      const storedUser = await AsyncStorage.getItem('auth_user');
+
       if (storedToken && storedUser) {
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
-        api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
       }
     } catch (error) {
       console.error('Error loading auth:', error);
@@ -31,29 +40,37 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (employeeId, pin) => {
     try {
-      const response = await api.post('/auth/login', {
-        employee_id: employeeId,
-        pin: pin
-      });
-      const { user: userData, token: authToken } = response.data;
-      await AsyncStorage.setItem('token', authToken);
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
-      setToken(authToken);
+      const response = await attendanceAPI.login({ employee_id: employeeId, pin });
+      const { token: newToken, user: userData } = response;
+
+      await AsyncStorage.setItem('auth_token', newToken);
+      await AsyncStorage.setItem('auth_user', JSON.stringify(userData));
+
+      setToken(newToken);
       setUser(userData);
+
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.response?.data?.error || 'Login failed' };
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message || 'Login failed'
+      };
     }
   };
 
   const logout = async () => {
-    try { await api.post('/auth/logout'); } catch (e) {}
-    await AsyncStorage.removeItem('token');
-    await AsyncStorage.removeItem('user');
-    delete api.defaults.headers.common['Authorization'];
-    setToken(null);
-    setUser(null);
+    try {
+      if (token) {
+        await attendanceAPI.logout();
+      }
+    } catch (error) {
+      // Logout silently fails if offline
+    } finally {
+      await AsyncStorage.removeItem('auth_token');
+      await AsyncStorage.removeItem('auth_user');
+      setToken(null);
+      setUser(null);
+    }
   };
 
   return (
@@ -63,4 +80,12 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export default AuthContext;

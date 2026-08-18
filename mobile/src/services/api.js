@@ -1,17 +1,47 @@
 import axios from 'axios';
+import { checkConnection } from './network';
 
-const BASE_URL = 'https://selfie-api-sqgh.onrender.com/api';
+const API_BASE_URL = 'https://selfie-api-sqgh.onrender.com/api';
 
-export const api = axios.create({
-  baseURL: BASE_URL,
+const api = axios.create({
+  baseURL: API_BASE_URL,
   timeout: 30000,
-  headers: { 'Content-Type': 'application/json' }
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
+api.interceptors.request.use(
+  async (config) => {
+    const isConnected = await checkConnection();
+    if (!isConnected) {
+      return Promise.reject({ message: 'No internet connection' });
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 export const attendanceAPI = {
-  submit: (formData) => api.post('/attendance', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
-  getAll: (params) => api.get('/attendance', { params }),
-  getTodaySummary: () => api.get('/attendance/summary/today')
+  submit: async (formData) => {
+    const response = await api.post('/attendance', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  getAll: async (params = {}) => {
+    const response = await api.get('/attendance', { params });
+    return response.data;
+  },
+
+  getTodaySummary: async () => {
+    const response = await api.get('/attendance/summary/today');
+    return response.data;
+  },
 };
+
+export { SERVER_URL: API_BASE_URL.replace('/api', '') };
+export default api;
