@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, Users, MapPin, Clock, LogOut, Camera, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Users, MapPin, Clock, LogOut, CalendarDays } from 'lucide-react';
 
 const Layout = () => {
   const { user, logout } = useAuth();
