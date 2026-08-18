@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { attendanceAPI } from '../services/api';
+import { attendanceAPI, SERVER_URL } from '../services/api';
 import { format } from 'date-fns';
 import { Download, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -146,7 +146,7 @@ const Attendance = () => {
                   <tr key={record.id}>
                     <td>
                       <img 
-                        src={`http://localhost:3001${record.photo_url}`}
+                        src={`${SERVER_URL}${record.photo_url}`}
                         alt=""
                         className="table-photo"
                       />
@@ -217,7 +217,7 @@ const Attendance = () => {
             <button className="modal-close" onClick={() => setSelectedRecord(null)}>×</button>
             <div className="modal-content">
               <img 
-                src={`http://localhost:3001${selectedRecord.photo_url}`}
+                src={`${SERVER_URL}${selectedRecord.photo_url}`}
                 alt="Attendance"
                 className="modal-photo"
               />
