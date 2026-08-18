@@ -46,11 +46,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
-  
-  // Auto-fix: detect and reset truncated bcrypt hashes
+// Session cleanup: delete expired tokens
+const cleanupSessions = async () => {
+  try {
+    const result = await pool.query('DELETE FROM sessions WHERE expires_at < NOW()');
+    if (result.rowCount > 0) {
+      console.log(`Cleaned up ${result.rowCount} expired sessions`);
+    }
+  } catch (error) {
+    console.error('Session cleanup error:', error.message);
+  }
+};
+
+// PIN recovery: fix truncated bcrypt hashes
+const recoverPins = async () => {
   try {
     const result = await pool.query(
       "SELECT id, employee_id, pin FROM users WHERE pin LIKE '$2%' AND LENGTH(pin) < 60"
@@ -69,12 +78,43 @@ app.listen(PORT, async () => {
     }
     
     if (result.rows.length > 0) {
-      console.log('PIN recovery complete. Affected users can now log in.');
+      console.log('PIN recovery complete.');
     }
   } catch (error) {
-    // Migration may not have run yet, ignore errors
-    console.log('PIN recovery check skipped (will run on next deploy)');
+    console.log('PIN recovery check skipped');
   }
+};
+
+// Start server
+const server = app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  
+  // Startup tasks
+  await cleanupSessions();
+  await recoverPins();
+  
+  // Periodic session cleanup every hour
+  setInterval(cleanupSessions, 60 * 60 * 1000);
 });
+
+// Graceful shutdown
+const shutdown = async (signal) => {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  server.close(async () => {
+    console.log('HTTP server closed.');
+    await pool.end();
+    console.log('Database pool closed.');
+    process.exit(0);
+  });
+  
+  // Force exit after 10 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 module.exports = app;
