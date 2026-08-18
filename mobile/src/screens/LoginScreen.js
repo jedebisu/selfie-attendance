@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginScreen() {
@@ -23,8 +23,8 @@ export default function LoginScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.content}>
         <View style={styles.logoContainer}>
-          <Text style={styles.logo}>📸</Text>
-          <Text style={styles.title}>Selfie Attendance</Text>
+          <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+          <Text style={styles.title}>EBISU T&A</Text>
           <Text style={styles.subtitle}>Clock in with your selfie</Text>
         </View>
         <View style={styles.form}>
@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   content: { flex: 1, justifyContent: 'center', paddingHorizontal: 30 },
   logoContainer: { alignItems: 'center', marginBottom: 50 },
-  logo: { fontSize: 80, marginBottom: 20 },
+  logo: { width: 120, height: 120, marginBottom: 15 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#333', marginBottom: 10 },
   subtitle: { fontSize: 16, color: '#666' },
   form: { backgroundColor: '#fff', padding: 30, borderRadius: 20, elevation: 5 },

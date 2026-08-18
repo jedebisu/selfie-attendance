@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Login = () => {
@@ -35,7 +34,7 @@ const Login = () => {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <Camera size={48} />
+          <img src="/logo.png" alt="Logo" className="login-logo" />
           <h1>EBISU T&A</h1>
           <p>Monitoring Dashboard</p>
         </div>

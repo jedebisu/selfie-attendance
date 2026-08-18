@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { attendanceAPI } from '../services/api';
 
@@ -33,8 +33,11 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.greeting}>Hello, {user?.name}!</Text>
-        <Text style={styles.employeeId}>ID: {user?.employee_id}</Text>
+        <Image source={require('../../assets/logo.png')} style={styles.headerLogo} resizeMode="contain" />
+        <View>
+          <Text style={styles.greeting}>Hello, {user?.name}!</Text>
+          <Text style={styles.employeeId}>ID: {user?.employee_id}</Text>
+        </View>
       </View>
 
       <View style={styles.statusCard}>
@@ -89,7 +92,8 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5', padding: 20 },
-  header: { marginBottom: 30 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
+  headerLogo: { width: 50, height: 50, marginRight: 15 },
   greeting: { fontSize: 28, fontWeight: 'bold', color: '#333' },
   employeeId: { fontSize: 16, color: '#666', marginTop: 5 },
   statusCard: { backgroundColor: '#fff', borderRadius: 20, padding: 25, marginBottom: 30, elevation: 5 },
