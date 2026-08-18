@@ -10,6 +10,7 @@ const userRoutes = require('./routes/users');
 const leaveRoutes = require('./routes/leave');
 const exportRoutes = require('./routes/export');
 const analyticsRoutes = require('./routes/analytics');
+const napsRoutes = require('./routes/naps');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -32,6 +33,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leave', leaveRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/naps', napsRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

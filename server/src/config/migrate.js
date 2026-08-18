@@ -94,6 +94,37 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_leave_date ON leave_requests(leave_date);
     `);
 
+    // NAP Deployments table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS naps (
+        id SERIAL PRIMARY KEY,
+        nap_id VARCHAR(100) UNIQUE NOT NULL,
+        cabinet VARCHAR(100),
+        location_type VARCHAR(50),
+        building_served VARCHAR(500),
+        floors_served TEXT,
+        working_lines INTEGER DEFAULT 0,
+        vacant_lines INTEGER DEFAULT 0,
+        total_capacity INTEGER DEFAULT 0,
+        cfs_region VARCHAR(100),
+        city_name VARCHAR(100),
+        province_name VARCHAR(100),
+        dp_nap_lat DECIMAL(10, 8),
+        dp_nap_long DECIMAL(11, 8),
+        naps_status VARCHAR(50),
+        olt_id VARCHAR(100),
+        sell_status VARCHAR(50),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_naps_location ON naps(dp_nap_lat, dp_nap_long);
+      CREATE INDEX IF NOT EXISTS idx_naps_city ON naps(city_name);
+      CREATE INDEX IF NOT EXISTS idx_naps_status ON naps(naps_status);
+    `);
+
     await client.query('COMMIT');
     console.log('Database tables created successfully!');
   } catch (error) {

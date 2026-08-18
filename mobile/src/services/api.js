@@ -43,5 +43,27 @@ export const attendanceAPI = {
   },
 };
 
+export const napsAPI = {
+  getAll: async (params = {}) => {
+    const response = await api.get('/naps', { params });
+    return response.data;
+  },
+
+  getNearest: async (params = {}) => {
+    const response = await api.get('/naps/nearest', { params });
+    return response.data;
+  },
+
+  getById: async (napId) => {
+    const response = await api.get(`/naps/${napId}`);
+    return response.data;
+  },
+
+  getStats: async () => {
+    const response = await api.get('/naps/stats/summary');
+    return response.data;
+  },
+};
+
 export { SERVER_URL: API_BASE_URL.replace('/api', '') };
 export default api;
