@@ -42,6 +42,32 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
       return res.status(400).json({ error: 'Photo is required' });
     }
 
+    const attendanceStatus = status || 'clock_in';
+
+    // Duplicate prevention: block if same user submitted within last 2 minutes
+    const duplicateCheck = await pool.query(
+      `SELECT id FROM attendance 
+       WHERE user_id = $1 AND status = $2 
+       AND timestamp > NOW() - INTERVAL '2 minutes'`,
+      [user_id, attendanceStatus]
+    );
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(429).json({ error: 'Already recorded. Wait 2 minutes before trying again.' });
+    }
+
+    // Clock-out validation: must have a clock-in today before clocking out
+    if (attendanceStatus === 'clock_out') {
+      const clockInCheck = await pool.query(
+        `SELECT id FROM attendance 
+         WHERE user_id = $1 AND status = 'clock_in' 
+         AND DATE(timestamp) = CURRENT_DATE`,
+        [user_id]
+      );
+      if (clockInCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'You must clock in before clocking out.' });
+      }
+    }
+
     // Process image - add timestamp and GPS overlay
     const processedFilename = `processed_${photoFile.filename}`;
     const processedPath = path.join(__dirname, '../../uploads', processedFilename);
@@ -67,7 +93,7 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
         latitude || null,
         longitude || null,
         location_name || null,
-        status || 'clock_in',
+        attendanceStatus,
         device_info ? JSON.stringify(device_info) : null
       ]
     );
