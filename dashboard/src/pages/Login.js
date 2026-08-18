@@ -21,7 +21,7 @@ const Login = () => {
     setLoading(true);
     try {
       await login(employeeId, pin);
-      toast.success('Login successful');
+      toast.success('Welcome back');
       navigate('/');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Login failed');
@@ -34,9 +34,9 @@ const Login = () => {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <img src="/logo.png" alt="Logo" className="login-logo" />
+          <img src="/logo.png" alt="EBISU" className="login-logo" />
           <h1>EBISU T&A</h1>
-          <p>Monitoring Dashboard</p>
+          <p>Time & Attendance Dashboard</p>
         </div>
         
         <form onSubmit={handleSubmit}>
@@ -63,9 +63,11 @@ const Login = () => {
             />
           </div>
           
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
+          <div style={{ padding: '0 24px' }}>
+            <button type="submit" className="btn btn-primary btn-block" disabled={loading} style={{ width: '100%', padding: '14px', borderRadius: '12px', fontSize: '15px' }}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </div>
         </form>
       </div>
     </div>

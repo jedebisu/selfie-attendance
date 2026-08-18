@@ -13,6 +13,7 @@ export default function CameraScreen({ route, navigation }) {
   const [location, setLocation] = useState(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [locationError, setLocationError] = useState(null);
+  const [countdown, setCountdown] = useState(null);
 
   const fetchLocation = async () => {
     try {
@@ -25,13 +26,11 @@ export default function CameraScreen({ route, navigation }) {
         setLocationError('Location permission denied');
       }
     } catch (e) {
-      setLocationError('Failed to get location. Tap to retry.');
+      setLocationError('Tap to retry location');
     }
   };
 
-  useEffect(() => {
-    fetchLocation();
-  }, []);
+  useEffect(() => { fetchLocation(); }, []);
 
   useEffect(() => {
     (async () => {
@@ -74,27 +73,53 @@ export default function CameraScreen({ route, navigation }) {
     return <View style={styles.container}><Text style={{ color: '#fff', textAlign: 'center', marginTop: 100 }}>Camera permission required</Text></View>;
   }
 
+  const now = new Date();
+  const isClockIn = status === 'clock_in';
+
   return (
     <View style={styles.container}>
       <CameraView ref={cameraRef} style={styles.camera} facing="front">
-        <View style={styles.topBar}>
-          <Text style={styles.statusText}>{status === 'clock_in' ? '📍 CLOCK IN' : '📍 CLOCK OUT'}</Text>
+        <View style={styles.topOverlay}>
+          <View style={[styles.statusBadge, { backgroundColor: isClockIn ? 'rgba(74,222,128,0.9)' : 'rgba(248,113,113,0.9)' }]}>
+            <Text style={styles.statusBadgeText}>{isClockIn ? 'CLOCK IN' : 'CLOCK OUT'}</Text>
+          </View>
         </View>
-        <View style={styles.bottomBar}>
-          <Text style={styles.timeText}>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</Text>
-          <Text style={styles.dateText}>{new Date().toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</Text>
-          {location && <Text style={styles.locationText}>📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</Text>}
+
+        <View style={styles.infoOverlay}>
+          <Text style={styles.timeDisplay}>
+            {now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+          </Text>
+          <Text style={styles.dateDisplay}>
+            {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          </Text>
+          {location && (
+            <View style={styles.locationPill}>
+              <Text style={styles.locationText}>
+                {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+              </Text>
+            </View>
+          )}
           {locationError && (
-            <TouchableOpacity onPress={fetchLocation}>
-              <Text style={styles.locationError}>⚠️ {locationError}</Text>
+            <TouchableOpacity onPress={fetchLocation} style={styles.locationPill}>
+              <Text style={styles.locationError}>{locationError}</Text>
             </TouchableOpacity>
           )}
         </View>
-        <View style={styles.captureContainer}>
-          <TouchableOpacity style={[styles.captureButton, loading && { opacity: 0.5 }]} onPress={takePicture} disabled={loading}>
-            {loading ? <ActivityIndicator size="large" color="#fff" /> : <View style={styles.captureInner} />}
+
+        <View style={styles.captureArea}>
+          <TouchableOpacity
+            style={[styles.captureButton, loading && { opacity: 0.4 }]}
+            onPress={takePicture}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator size="large" color="#fff" />
+            ) : (
+              <View style={styles.captureInner} />
+            )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.goBack()} disabled={loading}>
+          <TouchableOpacity onPress={() => navigation.goBack()} disabled={loading} style={styles.cancelBtn}>
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
         </View>
@@ -106,15 +131,23 @@ export default function CameraScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   camera: { flex: 1 },
-  topBar: { backgroundColor: 'rgba(0,0,0,0.6)', padding: 20, paddingTop: 50, alignItems: 'center' },
-  statusText: { color: '#fff', fontSize: 18, fontWeight: '600' },
-  bottomBar: { backgroundColor: 'rgba(0,0,0,0.6)', padding: 20, paddingBottom: 120, alignItems: 'center' },
-  timeText: { color: '#4CAF50', fontSize: 32, fontWeight: 'bold' },
-  dateText: { color: '#fff', fontSize: 16, marginTop: 5 },
-  locationText: { color: '#fff', fontSize: 14, marginTop: 10 },
-  locationError: { color: '#FFD700', fontSize: 14, marginTop: 10 },
-  captureContainer: { position: 'absolute', bottom: 30, left: 0, right: 0, alignItems: 'center' },
-  captureButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#fff' },
-  captureInner: { width: 65, height: 65, borderRadius: 32.5, backgroundColor: '#fff' },
-  cancelText: { color: '#fff', fontSize: 16, marginTop: 20 },
+  topOverlay: { paddingTop: 56, paddingHorizontal: 20, alignItems: 'center' },
+  statusBadge: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
+  statusBadgeText: { color: '#fff', fontSize: 13, fontWeight: '800', letterSpacing: 2 },
+  infoOverlay: { flex: 1, justifyContent: 'flex-end', paddingBottom: 160, alignItems: 'center' },
+  timeDisplay: { color: '#fff', fontSize: 44, fontWeight: '200', letterSpacing: 2 },
+  dateDisplay: { color: 'rgba(255,255,255,0.7)', fontSize: 14, marginTop: 4, fontWeight: '400' },
+  locationPill: {
+    marginTop: 12, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20,
+  },
+  locationText: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontFamily: 'monospace' },
+  locationError: { color: '#fbbf24', fontSize: 12 },
+  captureArea: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
+  captureButton: {
+    width: 76, height: 76, borderRadius: 38, backgroundColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#fff',
+  },
+  captureInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff' },
+  cancelBtn: { marginTop: 20 },
+  cancelText: { color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '500' },
 });
