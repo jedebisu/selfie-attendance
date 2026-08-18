@@ -82,96 +82,7 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
   }
 });
 
-// Get all attendance records (with filters)
-router.get('/', authenticateToken, async (req, res) => {
-  try {
-    const { user_id, date, status, page = 1, limit = 50 } = req.query;
-    const offset = (page - 1) * limit;
-
-    let query = `
-      SELECT a.*, u.name as user_name, u.employee_id
-      FROM attendance a
-      JOIN users u ON a.user_id = u.id
-      WHERE 1=1
-    `;
-    const params = [];
-    let paramCount = 0;
-
-    if (user_id) {
-      paramCount++;
-      query += ` AND a.user_id = $${paramCount}`;
-      params.push(user_id);
-    }
-
-    if (date) {
-      paramCount++;
-      query += ` AND DATE(a.timestamp) = $${paramCount}`;
-      params.push(date);
-    }
-
-    if (status) {
-      paramCount++;
-      query += ` AND a.status = $${paramCount}`;
-      params.push(status);
-    }
-
-    query += ` ORDER BY a.timestamp DESC`;
-    
-    paramCount++;
-    query += ` LIMIT $${paramCount}`;
-    params.push(limit);
-    
-    paramCount++;
-    query += ` OFFSET $${paramCount}`;
-    params.push(offset);
-
-    const result = await pool.query(query, params);
-
-    // Get total count
-    const countResult = await pool.query(
-      `SELECT COUNT(*) FROM attendance WHERE 1=1`,
-      []
-    );
-
-    res.json({
-      records: result.rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: parseInt(countResult.rows[0].count)
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching attendance:', error);
-    res.status(500).json({ error: 'Failed to fetch attendance records' });
-  }
-});
-
-// Get single attendance record
-router.get('/:id', authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const result = await pool.query(
-      `SELECT a.*, u.name as user_name, u.employee_id
-       FROM attendance a
-       JOIN users u ON a.user_id = u.id
-       WHERE a.id = $1`,
-      [id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Record not found' });
-    }
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Error fetching attendance record:', error);
-    res.status(500).json({ error: 'Failed to fetch attendance record' });
-  }
-});
-
-// Get today's attendance summary
+// Get today's attendance summary (MUST be before /:id to avoid route conflict)
 router.get('/summary/today', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
@@ -196,7 +107,7 @@ router.get('/summary/today', authenticateToken, async (req, res) => {
   }
 });
 
-// Get monthly attendance summary per user
+// Get monthly attendance summary per user (MUST be before /:id)
 router.get('/summary/monthly', authenticateToken, async (req, res) => {
   try {
     const { year, month } = req.query;
@@ -279,6 +190,98 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching monthly summary:', error);
     res.status(500).json({ error: 'Failed to fetch monthly summary' });
+  }
+});
+
+// Get all attendance records (with filters) — AFTER /summary/* routes
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const { user_id, date, status, page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+
+    let query = `
+      SELECT a.*, u.name as user_name, u.employee_id
+      FROM attendance a
+      JOIN users u ON a.user_id = u.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramCount = 0;
+
+    if (user_id) {
+      paramCount++;
+      query += ` AND a.user_id = $${paramCount}`;
+      params.push(user_id);
+    }
+
+    if (date) {
+      paramCount++;
+      query += ` AND DATE(a.timestamp) = $${paramCount}`;
+      params.push(date);
+    }
+
+    if (status) {
+      paramCount++;
+      query += ` AND a.status = $${paramCount}`;
+      params.push(status);
+    }
+
+    query += ` ORDER BY a.timestamp DESC`;
+    
+    paramCount++;
+    query += ` LIMIT $${paramCount}`;
+    params.push(limit);
+    
+    paramCount++;
+    query += ` OFFSET $${paramCount}`;
+    params.push(offset);
+
+    const result = await pool.query(query, params);
+
+    // Get total count with same filters
+    let countSql = `SELECT COUNT(*) FROM attendance a WHERE 1=1`;
+    const countParams = [];
+    let cp = 0;
+    if (user_id) { cp++; countSql += ` AND a.user_id = $${cp}`; countParams.push(user_id); }
+    if (date) { cp++; countSql += ` AND DATE(a.timestamp) = $${cp}`; countParams.push(date); }
+    if (status) { cp++; countSql += ` AND a.status = $${cp}`; countParams.push(status); }
+    const countResult = await pool.query(countSql, countParams);
+
+    res.json({
+      records: result.rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: parseInt(countResult.rows[0].count)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching attendance:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance records' });
+  }
+});
+
+// Get single attendance record (MUST be AFTER /summary/* routes)
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT a.*, u.name as user_name, u.employee_id
+       FROM attendance a
+       JOIN users u ON a.user_id = u.id
+       WHERE a.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching attendance record:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance record' });
   }
 });
 

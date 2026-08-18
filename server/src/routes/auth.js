@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { pool } = require('../config/database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -14,9 +15,10 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Employee ID and PIN are required' });
     }
 
+    // Fetch user by employee_id only (PIN check done with bcrypt)
     const result = await pool.query(
-      'SELECT * FROM users WHERE employee_id = $1 AND pin = $2 AND is_active = true',
-      [employee_id, pin]
+      'SELECT * FROM users WHERE employee_id = $1 AND is_active = true',
+      [employee_id]
     );
 
     if (result.rows.length === 0) {
@@ -24,8 +26,15 @@ router.post('/login', async (req, res) => {
     }
 
     const user = result.rows[0];
+
+    // Compare PIN with bcrypt hash
+    const pinMatch = await bcrypt.compare(pin, user.pin);
+    if (!pinMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
     const token = jwt.sign(
-      { userId: user.id, employeeId: user.employee_id },
+      { userId: user.id, employeeId: user.employee_id, isAdmin: user.is_admin },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -41,7 +50,8 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         employee_id: user.employee_id,
-        name: user.name
+        name: user.name,
+        is_admin: user.is_admin
       },
       token
     });
@@ -63,7 +73,7 @@ router.get('/verify', async (req, res) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
     const result = await pool.query(
-      'SELECT id, employee_id, name FROM users WHERE id = $1',
+      'SELECT id, employee_id, name, is_admin FROM users WHERE id = $1',
       [decoded.userId]
     );
 
