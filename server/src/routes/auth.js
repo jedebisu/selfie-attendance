@@ -30,13 +30,19 @@ router.post('/login', async (req, res) => {
     // Compare PIN with bcrypt hash
     let pinMatch = await bcrypt.compare(pin, user.pin);
 
-    // Auto-migrate: if bcrypt fails, check if it's a plaintext PIN and hash it
-    if (!pinMatch && user.pin === pin) {
-      const salt = await bcrypt.genSalt(10);
-      const hashedPin = await bcrypt.hash(pin, salt);
-      await pool.query('UPDATE users SET pin = $1 WHERE id = $2', [hashedPin, user.id]);
-      pinMatch = true;
-      console.log(`Auto-hashed PIN for ${user.employee_id}`);
+    // Auto-migrate: handle various legacy PIN states
+    if (!pinMatch) {
+      const isTruncatedHash = user.pin.startsWith('$2') && user.pin.length < 60;
+      const isPlaintext = user.pin === pin;
+
+      if (isTruncatedHash || isPlaintext) {
+        // PIN is correct but stored improperly - re-hash it
+        const salt = await bcrypt.genSalt(10);
+        const hashedPin = await bcrypt.hash(pin, salt);
+        await pool.query('UPDATE users SET pin = $1 WHERE id = $2', [hashedPin, user.id]);
+        pinMatch = true;
+        console.log(`Migrated PIN for ${user.employee_id}`);
+      }
     }
 
     if (!pinMatch) {
