@@ -25,7 +25,7 @@ const Layout = () => {
       <aside className="sidebar">
         <div className="sidebar-header">
           <Camera size={32} />
-          <h2>Selfie Attendance</h2>
+          <h2>EBISU T&A</h2>
         </div>
 
         <nav className="sidebar-nav">

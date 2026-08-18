@@ -36,7 +36,7 @@ const Login = () => {
       <div className="login-card">
         <div className="login-header">
           <Camera size={48} />
-          <h1>Selfie Attendance</h1>
+          <h1>EBISU T&A</h1>
           <p>Monitoring Dashboard</p>
         </div>
         
