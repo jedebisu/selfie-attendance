@@ -24,7 +24,7 @@ const Layout = () => {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <Camera size={32} />
+          <img src="/logo.png" alt="Logo" className="sidebar-logo" />
           <h2>EBISU T&A</h2>
         </div>
 
