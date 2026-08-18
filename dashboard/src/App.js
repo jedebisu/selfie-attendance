@@ -8,6 +8,7 @@ import Users from './pages/Users';
 import MapView from './pages/MapView';
 import Calendar from './pages/Calendar';
 import Leave from './pages/Leave';
+import Analytics from './pages/Analytics';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import './styles/App.css';
@@ -38,6 +39,7 @@ function App() {
             <Route path="attendance" element={<Attendance />} />
             <Route path="calendar" element={<Calendar />} />
             <Route path="leave" element={<Leave />} />
+            <Route path="analytics" element={<Analytics />} />
             <Route path="users" element={<Users />} />
             <Route path="map" element={<MapView />} />
           </Route>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { attendanceAPI, SERVER_URL } from '../services/api';
+import { attendanceAPI, analyticsAPI, SERVER_URL } from '../services/api';
 import { format } from 'date-fns';
-import { Users, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Users, Clock, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 const Dashboard = () => {
   const [summary, setSummary] = useState([]);
@@ -12,6 +13,7 @@ const Dashboard = () => {
     pending: 0,
     totalToday: 0
   });
+  const [weeklyTrend, setWeeklyTrend] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,6 +43,18 @@ const Dashboard = () => {
         pending: totalEmployees - clockedIn,
         totalToday: attendanceData.pagination?.total || 0
       });
+
+      try {
+        const end = new Date().toISOString().split('T')[0];
+        const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const trendRes = await analyticsAPI.getAttendanceTrend({ start_date: start, end_date: end });
+        setWeeklyTrend((trendRes.data.trend || []).map(d => ({
+          ...d,
+          date: new Date(d.day).toLocaleDateString('en-US', { weekday: 'short' })
+        })));
+      } catch (e) {
+        // Analytics endpoint might not be available yet
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -99,6 +113,30 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {weeklyTrend.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header">
+            <h2><TrendingUp size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />Weekly Attendance Trend</h2>
+          </div>
+          <div className="card-body">
+            <div className="mini-chart-container">
+              <ResponsiveContainer width="100%" height={150}>
+                <AreaChart data={weeklyTrend}>
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{ background: '#1a1d23', border: 'none', borderRadius: 8, fontSize: 12 }}
+                    labelStyle={{ color: '#ccc' }}
+                    formatter={(value) => [`${value}%`, 'Attendance']}
+                  />
+                  <Area type="monotone" dataKey="attendance_rate" stroke="#c8956c" fill="#c8956c" fillOpacity={0.2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="dashboard-grid">
         <div className="card">

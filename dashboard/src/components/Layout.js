@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, Users, MapPin, Clock, LogOut, CalendarDays, CalendarOff } from 'lucide-react';
+import { LayoutDashboard, Users, MapPin, Clock, LogOut, CalendarDays, CalendarOff, BarChart3 } from 'lucide-react';
 
 const Layout = () => {
   const { user, logout } = useAuth();
@@ -17,6 +17,7 @@ const Layout = () => {
     { to: '/attendance', icon: Clock, label: 'Attendance' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
     { to: '/leave', icon: CalendarOff, label: 'Leave' },
+    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/users', icon: Users, label: 'Users', adminOnly: true },
     { to: '/map', icon: MapPin, label: 'Map View' },
   ];
