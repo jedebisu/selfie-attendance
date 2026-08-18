@@ -156,6 +156,13 @@ const HomeScreen = ({ navigation }) => {
       <TouchableOpacity style={styles.historyButton} onPress={() => navigation.navigate('History')}>
         <Text style={styles.historyButtonText}>View History</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={[styles.historyButton, { backgroundColor: '#1a1d23', marginTop: 12 }]} 
+        onPress={() => navigation.navigate('NapMap')}
+      >
+        <Text style={[styles.historyButtonText, { color: '#fff' }]}>CVN | CVS Naps</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 };
