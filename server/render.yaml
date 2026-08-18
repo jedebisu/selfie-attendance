@@ -3,7 +3,7 @@ services:
     name: selfie-attendance-api
     runtime: node
     plan: free
-    buildCommand: npm install && npm run db:migrate && npm run db:seed && node src/config/import-naps-production.js
+    buildCommand: npm install && npm run db:migrate && npm run db:seed
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
