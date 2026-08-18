@@ -45,5 +45,19 @@ export const userAPI = {
   getById: (id) => api.get(`/users/${id}`),
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),
-  delete: (id) => api.delete(`/users/${id}`)
+  delete: (id) => api.delete(`/users/${id}`),
+  resetPin: (id, newPin) => api.post(`/users/${id}/reset-pin`, { new_pin: newPin })
+};
+
+export const leaveAPI = {
+  getAll: (params) => api.get('/leave', { params }),
+  getMonth: (year, month) => api.get('/leave/month', { params: { year, month } }),
+  create: (data) => api.post('/leave', data),
+  update: (id, status) => api.put(`/leave/${id}`, { status }),
+  delete: (id) => api.delete(`/leave/${id}`)
+};
+
+export const exportAPI = {
+  attendance: (params) => api.get('/export/attendance', { params, responseType: 'blob' }),
+  leaves: (params) => api.get('/export/leaves', { params, responseType: 'blob' })
 };

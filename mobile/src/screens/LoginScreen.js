@@ -44,16 +44,16 @@ export default function LoginScreen() {
             />
           </View>
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>PIN</Text>
+            <Text style={styles.label}>Password</Text>
             <TextInput
               style={styles.input}
               value={pin}
               onChangeText={setPin}
-              placeholder="Enter your PIN"
+              placeholder="Enter your password"
               placeholderTextColor="#9ca3af"
               secureTextEntry
               keyboardType="numeric"
-              maxLength={6}
+              maxLength={20}
               editable={!loading}
             />
           </View>

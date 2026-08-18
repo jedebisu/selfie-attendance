@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { userAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
-import { Plus, Edit2, Trash2, X, Shield } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Shield, Key } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Users = () => {
@@ -17,6 +17,10 @@ const Users = () => {
     pin: '',
     is_admin: false
   });
+
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetUser, setResetUser] = useState(null);
+  const [newPin, setNewPin] = useState('');
 
   const isAdmin = currentUser?.is_admin;
 
@@ -99,6 +103,23 @@ const Users = () => {
     setShowModal(true);
   };
 
+  const openResetPin = (user) => {
+    setResetUser(user);
+    setNewPin('');
+    setShowResetModal(true);
+  };
+
+  const handleResetPin = async (e) => {
+    e.preventDefault();
+    try {
+      await userAPI.resetPin(resetUser.id, newPin);
+      toast.success(`PIN reset for ${resetUser.name}`);
+      setShowResetModal(false);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to reset PIN');
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading users...</div>;
   }
@@ -163,6 +184,9 @@ const Users = () => {
                       <button onClick={() => handleEdit(user)} className="btn btn-icon">
                         <Edit2 size={16} />
                       </button>
+                      <button onClick={() => openResetPin(user)} className="btn btn-icon" title="Reset PIN">
+                        <Key size={16} />
+                      </button>
                       <button onClick={() => handleDelete(user.id)} className="btn btn-icon btn-danger">
                         <Trash2 size={16} />
                       </button>
@@ -216,14 +240,14 @@ const Users = () => {
                 />
               </div>
               <div className="form-group">
-                <label>{editingUser ? 'New PIN (leave blank to keep)' : 'PIN *'}</label>
+                <label>{editingUser ? 'New Password (leave blank to keep)' : 'Password *'}</label>
                 <input
                   type="password"
                   name="pin"
                   value={formData.pin}
                   onChange={handleInputChange}
                   required={!editingUser}
-                  maxLength={6}
+                  maxLength={20}
                 />
               </div>
               <div className="form-group">
@@ -243,6 +267,41 @@ const Users = () => {
                 </button>
                 <button type="submit" className="btn btn-primary">
                   {editingUser ? 'Update' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showResetModal && (
+        <div className="modal-overlay" onClick={() => setShowResetModal(false)}>
+          <div className="modal modal-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Reset PIN — {resetUser?.name}</h2>
+              <button className="modal-close" onClick={() => setShowResetModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleResetPin}>
+              <div className="form-group">
+                <label>New PIN * (min 4 characters)</label>
+                <input
+                  type="password"
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value)}
+                  required
+                  minLength={4}
+                  maxLength={20}
+                  autoFocus
+                />
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowResetModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Reset PIN
                 </button>
               </div>
             </form>

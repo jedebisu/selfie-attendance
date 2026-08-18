@@ -136,4 +136,33 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// Reset user PIN (admin only)
+router.post('/:id/reset-pin', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_pin } = req.body;
+
+    if (!new_pin || new_pin.length < 4) {
+      return res.status(400).json({ error: 'PIN must be at least 4 characters' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPin = await bcrypt.hash(new_pin, salt);
+
+    const result = await pool.query(
+      'UPDATE users SET pin = $1, updated_at = NOW() WHERE id = $2 RETURNING id, employee_id, name',
+      [hashedPin, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ message: `PIN reset for ${result.rows[0].name}`, user: result.rows[0] });
+  } catch (error) {
+    console.error('Error resetting PIN:', error);
+    res.status(500).json({ error: 'Failed to reset PIN' });
+  }
+});
+
 module.exports = router;

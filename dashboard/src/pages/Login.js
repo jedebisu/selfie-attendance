@@ -14,7 +14,7 @@ const Login = () => {
     e.preventDefault();
     
     if (!employeeId || !pin) {
-      toast.error('Please enter both Employee ID and PIN');
+      toast.error('Please enter both Employee ID and Password');
       return;
     }
 
@@ -52,14 +52,14 @@ const Login = () => {
           </div>
           
           <div className="form-group">
-            <label>PIN</label>
+            <label>Password</label>
             <input
               type="password"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              placeholder="Enter your PIN"
+              placeholder="Enter your password"
               disabled={loading}
-              maxLength={6}
+              maxLength={20}
             />
           </div>
           

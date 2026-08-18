@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { attendanceAPI, SERVER_URL } from '../services/api';
+import { attendanceAPI, SERVER_URL, exportAPI } from '../services/api';
 import { format } from 'date-fns';
 import { Download, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -50,34 +50,24 @@ const Attendance = () => {
     setPagination(prev => ({ ...prev, page: 1 }));
   };
 
-  const exportToCSV = () => {
-    if (records.length === 0) {
-      toast.error('No records to export');
-      return;
+  const exportToCSV = async () => {
+    try {
+      const params = {};
+      if (filters.date) params.start_date = filters.date;
+      if (filters.date) params.end_date = filters.date;
+      if (filters.status) params.status = filters.status;
+      if (filters.user_id) params.user_id = filters.user_id;
+      const res = await exportAPI.attendance(params);
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance_${filters.date || 'all'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Exported successfully');
+    } catch (error) {
+      toast.error('Failed to export');
     }
-
-    const headers = ['ID', 'Employee', 'Employee ID', 'Status', 'Date', 'Time', 'Latitude', 'Longitude'];
-    const rows = records.map(r => [
-      r.id,
-      r.user_name,
-      r.employee_id,
-      r.status,
-      format(new Date(r.timestamp), 'yyyy-MM-dd'),
-      format(new Date(r.timestamp), 'hh:mm:ss a'),
-      r.latitude || '',
-      r.longitude || ''
-    ]);
-
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `attendance_${filters.date || 'all'}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    toast.success('Exported successfully');
   };
 
   const formatDateTime = (timestamp) => {
