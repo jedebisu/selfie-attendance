@@ -59,11 +59,14 @@ const processAttendancePhoto = async ({
         const px = Math.floor(fracX * tileSize);
         const py = Math.floor(fracY * tileSize);
 
+        const extractLeft = Math.max(0, Math.min(px - mapSize / 2, tileSize - mapSize));
+        const extractTop = Math.max(0, Math.min(py - mapSize / 2, tileSize - mapSize));
+
         mapBuffer = await sharp(rawTile)
           .resize(tileSize, tileSize)
           .extract({
-            left: Math.max(0, px - mapSize / 2),
-            top: Math.max(0, py - mapSize / 2),
+            left: extractLeft,
+            top: extractTop,
             width: mapSize,
             height: mapSize
           })
@@ -82,6 +85,9 @@ const processAttendancePhoto = async ({
     }
 
     const overlayWidth = mapBuffer ? mapSize + mapPadding * 2 + 140 : 280;
+
+    const safeOverlayTop = Math.max(0, height - overlayHeight - 16);
+    const safeOverlayLeft = Math.max(0, Math.min(0, width - overlayWidth));
 
     let svgContent = `
       <svg width="${overlayWidth}" height="${overlayHeight}">
@@ -104,19 +110,20 @@ const processAttendancePhoto = async ({
 
     const composites = [{
       input: Buffer.from(svgContent),
-      top: height - overlayHeight - 16,
-      left: 0
+      top: safeOverlayTop,
+      left: safeOverlayLeft
     }];
 
     if (mapBuffer) {
       composites.push({
         input: mapBuffer,
-        top: height - overlayHeight - 16 + mapPadding,
-        left: mapPadding
+        top: safeOverlayTop + mapPadding,
+        left: safeOverlayLeft + mapPadding
       });
     }
 
     await sharp(inputPath)
+      .rotate()
       .composite(composites)
       .jpeg({ quality: 90 })
       .toFile(outputPath);
