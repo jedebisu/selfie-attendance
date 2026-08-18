@@ -61,3 +61,11 @@ export const exportAPI = {
   attendance: (params) => api.get('/export/attendance', { params, responseType: 'blob' }),
   leaves: (params) => api.get('/export/leaves', { params, responseType: 'blob' })
 };
+
+export const analyticsAPI = {
+  getOverview: (params) => api.get('/analytics/overview', { params }),
+  getAttendanceTrend: (params) => api.get('/analytics/attendance-trend', { params }),
+  getHoursWorked: (params) => api.get('/analytics/hours-worked', { params }),
+  getClockInDistribution: (params) => api.get('/analytics/clock-in-distribution', { params }),
+  getDayOfWeek: (params) => api.get('/analytics/day-of-week', { params })
+};
