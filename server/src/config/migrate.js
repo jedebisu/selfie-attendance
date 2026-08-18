@@ -30,6 +30,15 @@ const createTables = async () => {
       END $$;
     `);
 
+    // Widen pin column to fit bcrypt hashes (was VARCHAR(10), needs VARCHAR(60))
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ALTER COLUMN pin TYPE VARCHAR(60);
+      EXCEPTION WHEN undefined_column THEN null;
+            WHEN duplicate_column THEN null;
+      END $$;
+    `);
+
     // Attendance records table
     await client.query(`
       CREATE TABLE IF NOT EXISTS attendance (
