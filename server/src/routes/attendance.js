@@ -68,7 +68,7 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
       const clockInCheck = await pool.query(
         `SELECT id FROM attendance 
          WHERE user_id = $1 AND status = 'clock_in' 
-         AND DATE(timestamp) = DATE($2::timestamp)`,
+         AND DATE(timestamp + INTERVAL '8 hours') = DATE($2::timestamp + INTERVAL '8 hours')`,
         [user_id, recordTimestamp.toISOString()]
       );
       if (clockInCheck.rows.length === 0) {
@@ -129,7 +129,7 @@ router.get('/summary/today', authenticateToken, async (req, res) => {
         MAX(CASE WHEN a.status = 'clock_out' THEN a.timestamp END) as last_clock_out,
         COUNT(CASE WHEN a.status = 'clock_in' THEN 1 END) as clock_in_count
        FROM users u
-       LEFT JOIN attendance a ON u.id = a.user_id AND DATE(a.timestamp) = CURRENT_DATE
+       LEFT JOIN attendance a ON u.id = a.user_id AND DATE(a.timestamp + INTERVAL '8 hours') = DATE(NOW() + INTERVAL '8 hours')
        WHERE u.is_active = true
        GROUP BY u.id, u.name, u.employee_id
        ORDER BY u.name`
@@ -167,7 +167,7 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
         a.photo_url,
         a.latitude,
         a.longitude,
-        DATE(a.timestamp) as attendance_date
+        DATE(a.timestamp + INTERVAL '8 hours') as attendance_date
        FROM users u
        LEFT JOIN attendance a ON u.id = a.user_id 
          AND a.timestamp >= $1 
@@ -259,7 +259,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
     if (date) {
       paramCount++;
-      query += ` AND DATE(a.timestamp) = $${paramCount}`;
+      query += ` AND DATE(a.timestamp + INTERVAL '8 hours') = $${paramCount}`;
       params.push(date);
     }
 
@@ -286,7 +286,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const countParams = [];
     let cp = 0;
     if (user_id) { cp++; countSql += ` AND a.user_id = $${cp}`; countParams.push(user_id); }
-    if (date) { cp++; countSql += ` AND DATE(a.timestamp) = $${cp}`; countParams.push(date); }
+    if (date) { cp++; countSql += ` AND DATE(a.timestamp + INTERVAL '8 hours') = $${cp}`; countParams.push(date); }
     if (status) { cp++; countSql += ` AND a.status = $${cp}`; countParams.push(status); }
     const countResult = await pool.query(countSql, countParams);
 
