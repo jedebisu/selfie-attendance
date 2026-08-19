@@ -28,6 +28,11 @@
         "backgroundColor": "#007AFF"
       },
       "package": "com.jedebisu.selfieattendance",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyB5rkLpbkqqIMo6FYMVj7gqoLGH3uGWoWg"
+        }
+      },
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
