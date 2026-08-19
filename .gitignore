@@ -1,6 +1,7 @@
 node_modules/
 mobile/android/
 mobile/selfie-attendance-*.apk
+.expo/
 .env
 build/
 dist/
