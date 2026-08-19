@@ -49,6 +49,7 @@ const processQueue = async () => {
         });
         formData.append('user_id', entry.userId);
         formData.append('status', entry.status);
+        formData.append('timestamp', entry.timestamp);
         
         if (entry.latitude && entry.longitude) {
           formData.append('latitude', entry.latitude);
