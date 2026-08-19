@@ -259,21 +259,6 @@ const ensureTestUsers = async () => {
   }
 };
 
-    for (const user of users) {
-      const hashedPin = await bcrypt.hash(user.pin, salt);
-      await pool.query(
-        `INSERT INTO users (employee_id, name, email, pin, is_admin)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (employee_id) DO UPDATE SET pin = $4, is_admin = $5`,
-        [user.employee_id, user.name, user.email, hashedPin, user.is_admin]
-      );
-    }
-    console.log('Test users verified.');
-  } catch (error) {
-    console.log('Ensure users check skipped:', error.message);
-  }
-};
-
 // Start server
 const server = app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
