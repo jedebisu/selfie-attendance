@@ -202,8 +202,10 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
         });
         if (row.status === 'clock_in') {
           users[row.user_id].days[dateKey].clock_in = row.timestamp;
-          const clockInHour = new Date(row.timestamp).getHours();
-          const clockInMinute = new Date(row.timestamp).getMinutes();
+          const localTime = new Date(row.timestamp);
+          localTime.setHours(localTime.getHours() + 8);
+          const clockInHour = localTime.getHours();
+          const clockInMinute = localTime.getMinutes();
           if (clockInHour > 11 || (clockInHour === 11 && clockInMinute > 0)) {
             users[row.user_id].days[dateKey].status = 'absent';
           } else {
