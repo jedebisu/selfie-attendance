@@ -56,8 +56,8 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
     const duplicateCheck = await pool.query(
       `SELECT id FROM attendance 
        WHERE user_id = $1 AND status = $2 
-       AND timestamp > $3 - INTERVAL '2 minutes'`,
-      [user_id, attendanceStatus, recordTimestamp]
+       AND timestamp > ($3::timestamp - INTERVAL '2 minutes')`,
+      [user_id, attendanceStatus, recordTimestamp.toISOString()]
     );
     if (duplicateCheck.rows.length > 0) {
       return res.status(429).json({ error: 'Already recorded. Wait 2 minutes before trying again.' });
@@ -68,8 +68,8 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
       const clockInCheck = await pool.query(
         `SELECT id FROM attendance 
          WHERE user_id = $1 AND status = 'clock_in' 
-         AND DATE(timestamp) = DATE($2)`,
-        [user_id, recordTimestamp]
+         AND DATE(timestamp) = DATE($2::timestamp)`,
+        [user_id, recordTimestamp.toISOString()]
       );
       if (clockInCheck.rows.length === 0) {
         return res.status(400).json({ error: 'You must clock in before clocking out.' });
