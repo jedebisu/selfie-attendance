@@ -53,6 +53,37 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Debug: force re-seed users (temporary)
+app.post('/api/debug/seed-users', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const salt = await bcrypt.genSalt(10);
+    const users = [
+      { employee_id: 'EMP001', name: 'John Doe', email: 'john@example.com', pin: '123456', is_admin: true },
+      { employee_id: 'EMP002', name: 'Jane Smith', email: 'jane@example.com', pin: '5678', is_admin: false },
+      { employee_id: 'EMP003', name: 'Mike Johnson', email: 'mike@example.com', pin: '9012', is_admin: false },
+    ];
+    const results = [];
+    for (const user of users) {
+      const hashedPin = await bcrypt.hash(user.pin, salt);
+      const r = await pool.query(
+        `INSERT INTO users (employee_id, name, email, pin, is_admin)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (employee_id) DO UPDATE SET pin = $4, name = $2, is_admin = $5
+         RETURNING id, employee_id, LENGTH(pin) as pin_len`,
+        [user.employee_id, user.name, user.email, hashedPin, user.is_admin]
+      );
+      results.push(r.rows[0]);
+    }
+    // Verify
+    const test = await pool.query("SELECT pin FROM users WHERE employee_id = 'EMP002'");
+    const valid = await bcrypt.compare('5678', test.rows[0].pin);
+    res.json({ results, verifyEMP002: valid, pinPreview: test.rows[0].pin.substring(0, 20) });
+  } catch (error) {
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
