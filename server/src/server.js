@@ -76,9 +76,15 @@ app.post('/api/debug/seed-users', async (req, res) => {
       results.push(r.rows[0]);
     }
     // Verify
-    const test = await pool.query("SELECT pin FROM users WHERE employee_id = 'EMP002'");
+    const test = await pool.query("SELECT * FROM users WHERE employee_id = 'EMP002'");
     const valid = await bcrypt.compare('5678', test.rows[0].pin);
-    res.json({ results, verifyEMP002: valid, pinPreview: test.rows[0].pin.substring(0, 20) });
+    res.json({ 
+      results, 
+      verifyEMP002: valid, 
+      pinPreview: test.rows[0].pin.substring(0, 20),
+      is_active: test.rows[0].is_active,
+      user_id: test.rows[0].id
+    });
   } catch (error) {
     res.status(500).json({ error: error.message, stack: error.stack });
   }
