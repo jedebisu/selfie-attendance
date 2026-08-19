@@ -78,6 +78,7 @@ const CameraScreen = ({ navigation, route }) => {
       });
       formData.append('user_id', user.id);
       formData.append('status', status);
+      formData.append('timestamp', new Date().toISOString());
 
       if (location) {
         formData.append('latitude', location.latitude);
