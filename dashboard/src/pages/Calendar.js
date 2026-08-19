@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { attendanceAPI, leaveAPI } from '../services/api';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
-  isToday, isWeekend, addMonths, subMonths, startOfWeek, endOfWeek
+  isToday, isWeekend, isFuture, addMonths, subMonths, startOfWeek, endOfWeek
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -22,13 +22,13 @@ const SingleCalendar = ({ user, monthDate, onClickDay, leaveDates }) => {
   const calEnd = endOfWeek(monthEnd);
   const allDays = eachDayOfInterval({ start: calStart, end: calEnd });
 
-  const presentDays = Object.keys(user.days).filter(d => user.days[d].clock_in).length;
+  const presentDays = Object.keys(user.days).filter(d => user.days[d].status === 'present').length;
   const leaveDays = allDays.filter(d => {
     const dateKey = format(d, 'yyyy-MM-dd');
     return leaveDates.has(dateKey) && d >= monthStart && d <= monthEnd && !isWeekend(d);
   }).length;
   const totalWorkdays = allDays.filter(d =>
-    !isWeekend(d) && d >= monthStart && d <= monthEnd
+    !isWeekend(d) && d >= monthStart && d <= monthEnd && !isFuture(d)
   ).length;
   const absentDays = totalWorkdays - presentDays - leaveDays;
 
@@ -59,7 +59,7 @@ const SingleCalendar = ({ user, monthDate, onClickDay, leaveDates }) => {
           const today = isToday(day);
           const dateKey = format(day, 'yyyy-MM-dd');
           const dayData = user.days[dateKey];
-          const isPresent = dayData && dayData.clock_in;
+          const isPresent = dayData && dayData.status === 'present';
           const isLeave = leaveDates.has(dateKey);
 
           let status = null;
@@ -75,7 +75,7 @@ const SingleCalendar = ({ user, monthDate, onClickDay, leaveDates }) => {
               status = 'L';
               cellBg = STATUS_COLORS.L.bg;
               cellColor = STATUS_COLORS.L.color;
-            } else {
+            } else if (!isFuture(day)) {
               status = 'A';
               cellBg = STATUS_COLORS.A.bg;
               cellColor = STATUS_COLORS.A.color;

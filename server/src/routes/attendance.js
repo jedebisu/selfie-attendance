@@ -35,7 +35,7 @@ const upload = multer({
 // Submit attendance (clock in/out)
 router.post('/', authenticateToken, upload.single('photo'), async (req, res) => {
   try {
-    const { user_id, latitude, longitude, location_name, status, device_info } = req.body;
+    const { user_id, latitude, longitude, location_name, status, device_info, timestamp: clientTimestamp } = req.body;
     const photoFile = req.file;
 
     if (!photoFile) {
@@ -43,13 +43,14 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
     }
 
     const attendanceStatus = status || 'clock_in';
+    const recordTimestamp = clientTimestamp ? new Date(clientTimestamp) : new Date();
 
     // Duplicate prevention: block if same user submitted within last 2 minutes
     const duplicateCheck = await pool.query(
       `SELECT id FROM attendance 
        WHERE user_id = $1 AND status = $2 
-       AND timestamp > NOW() - INTERVAL '2 minutes'`,
-      [user_id, attendanceStatus]
+       AND timestamp > $3 - INTERVAL '2 minutes'`,
+      [user_id, attendanceStatus, recordTimestamp]
     );
     if (duplicateCheck.rows.length > 0) {
       return res.status(429).json({ error: 'Already recorded. Wait 2 minutes before trying again.' });
@@ -60,8 +61,8 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
       const clockInCheck = await pool.query(
         `SELECT id FROM attendance 
          WHERE user_id = $1 AND status = 'clock_in' 
-         AND DATE(timestamp) = CURRENT_DATE`,
-        [user_id]
+         AND DATE(timestamp) = DATE($2)`,
+        [user_id, recordTimestamp]
       );
       if (clockInCheck.rows.length === 0) {
         return res.status(400).json({ error: 'You must clock in before clocking out.' });
@@ -75,7 +76,7 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
     await processAttendancePhoto({
       inputPath: photoFile.path,
       outputPath: processedPath,
-      timestamp: new Date(),
+      timestamp: recordTimestamp,
       latitude: parseFloat(latitude) || null,
       longitude: parseFloat(longitude) || null,
       locationName: location_name || null
@@ -83,8 +84,8 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
 
     // Insert attendance record
     const result = await pool.query(
-      `INSERT INTO attendance (user_id, photo_url, original_photo_url, latitude, longitude, location_name, status, device_info)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO attendance (user_id, photo_url, original_photo_url, latitude, longitude, location_name, status, device_info, timestamp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         user_id,
@@ -94,7 +95,8 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
         longitude || null,
         location_name || null,
         attendanceStatus,
-        device_info ? JSON.stringify(device_info) : null
+        device_info ? JSON.stringify(device_info) : null,
+        recordTimestamp
       ]
     );
 
@@ -200,7 +202,13 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
         });
         if (row.status === 'clock_in') {
           users[row.user_id].days[dateKey].clock_in = row.timestamp;
-          users[row.user_id].days[dateKey].status = 'present';
+          const clockInHour = new Date(row.timestamp).getHours();
+          const clockInMinute = new Date(row.timestamp).getMinutes();
+          if (clockInHour > 11 || (clockInHour === 11 && clockInMinute > 0)) {
+            users[row.user_id].days[dateKey].status = 'absent';
+          } else {
+            users[row.user_id].days[dateKey].status = 'present';
+          }
         }
         if (row.status === 'clock_out') {
           users[row.user_id].days[dateKey].clock_out = row.timestamp;
