@@ -1,7 +1,7 @@
 import { getQueue, removeFromQueue, incrementRetry } from './offlineQueue';
 import { checkConnection } from './network';
 import { attendanceAPI } from './api';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { cacheTodaySummary } from './cache';
 
 let isSyncing = false;
