@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
 
 // Get all NAPs (with optional filters)
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { city, province, status, limit = 5000, min_lat, max_lat, min_long, max_long } = req.query;
 
@@ -77,7 +76,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Get nearest NAPs to a location
-router.get('/nearest', authenticateToken, async (req, res) => {
+router.get('/nearest', async (req, res) => {
   try {
     const { lat, lng, radius = 1, limit = 500 } = req.query;
 
@@ -85,17 +84,15 @@ router.get('/nearest', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'lat and lng are required' });
     }
 
-    // Bounding box pre-filter: ~111km per degree, add buffer
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
     const radiusNum = parseFloat(radius);
-    const buffer = radiusNum * 1.5 / 111.0; // generous buffer in degrees
+    const buffer = radiusNum * 1.5 / 111.0;
     const minLat = latNum - buffer;
     const maxLat = latNum + buffer;
     const minLng = lngNum - buffer;
     const maxLng = lngNum + buffer;
 
-    // Using Haversine formula for distance calculation, filter by radius in km
     const result = await pool.query(`
       SELECT * FROM (
         SELECT 
@@ -136,7 +133,7 @@ router.get('/nearest', authenticateToken, async (req, res) => {
 });
 
 // Get NAP stats summary (MUST be before /:napId)
-router.get('/stats/summary', authenticateToken, async (req, res) => {
+router.get('/stats/summary', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
@@ -160,7 +157,7 @@ router.get('/stats/summary', authenticateToken, async (req, res) => {
 });
 
 // Search NAPs by ID, building, city, etc.
-router.get('/search', authenticateToken, async (req, res) => {
+router.get('/search', async (req, res) => {
   try {
     const { q, limit = 20 } = req.query;
 
@@ -173,7 +170,7 @@ router.get('/search', authenticateToken, async (req, res) => {
       SELECT 
         id, nap_id, cabinet, location_type, building_served, floors_served,
         working_lines, vacant_lines, total_capacity, cfs_region,
-        city_name, province_name, dp_nap_lat, dp_nap_long, 
+        city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long, 
         naps_status, olt_id, sell_status,
         CASE 
           WHEN vacant_lines = 0 THEN 'red'
@@ -206,7 +203,7 @@ router.get('/search', authenticateToken, async (req, res) => {
 });
 
 // Get NAP details by ID (MUST be after /stats/summary and /search)
-router.get('/:napId', authenticateToken, async (req, res) => {
+router.get('/:napId', async (req, res) => {
   try {
     const { napId } = req.params;
 
