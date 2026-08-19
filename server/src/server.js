@@ -190,34 +190,7 @@ const cleanupSessions = async () => {
   }
 };
 
-// PIN recovery: fix truncated bcrypt hashes
-const recoverPins = async () => {
-  try {
-    const result = await pool.query(
-      "SELECT id, employee_id, pin FROM users WHERE pin LIKE '$2%' AND LENGTH(pin) < 60"
-    );
-    
-    const knownPins = { 'EMP001': '123456', 'EMP002': '5678', 'EMP003': '9012' };
-    
-    for (const user of result.rows) {
-      const plaintextPin = knownPins[user.employee_id];
-      if (plaintextPin) {
-        await pool.query('UPDATE users SET pin = $1 WHERE id = $2', [plaintextPin, user.id]);
-        console.log(`Fixed truncated PIN for ${user.employee_id}`);
-      } else {
-        console.warn(`WARNING: ${user.employee_id} has a corrupted PIN. Admin must reset it.`);
-      }
-    }
-    
-    if (result.rows.length > 0) {
-      console.log('PIN recovery complete.');
-    }
-  } catch (error) {
-    console.log('PIN recovery check skipped');
-  }
-};
-
-// Ensure test users exist with correct bcrypt hashes
+// Ensure test users exist with correct bcrypt hashes (runs on every startup)
 const ensureTestUsers = async () => {
   try {
     const bcrypt = require('bcryptjs');
@@ -227,6 +200,33 @@ const ensureTestUsers = async () => {
       { employee_id: 'EMP002', name: 'Jane Smith', email: 'jane@example.com', pin: '5678', is_admin: false },
       { employee_id: 'EMP003', name: 'Mike Johnson', email: 'mike@example.com', pin: '9012', is_admin: false },
     ];
+
+    for (const user of users) {
+      const hashedPin = await bcrypt.hash(user.pin, salt);
+      const result = await pool.query(
+        `INSERT INTO users (employee_id, name, email, pin, is_admin)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (employee_id) DO UPDATE SET pin = $4, is_admin = $5
+         RETURNING id, employee_id, LENGTH(pin) as pin_len`,
+        [user.employee_id, user.name, user.email, hashedPin, user.is_admin]
+      );
+      if (result.rows[0]) {
+        console.log(`User ${user.employee_id}: pin hash length=${result.rows[0].pin_len}`);
+      }
+    }
+
+    // Verify one user can authenticate
+    const testUser = await pool.query("SELECT pin FROM users WHERE employee_id = 'EMP002'");
+    if (testUser.rows.length > 0) {
+      const valid = await bcrypt.compare('5678', testUser.rows[0].pin);
+      console.log(`Auth verify EMP002/5678: ${valid}`);
+    }
+    
+    console.log('Test users verified.');
+  } catch (error) {
+    console.error('Ensure users FAILED:', error.message, error.stack);
+  }
+};
 
     for (const user of users) {
       const hashedPin = await bcrypt.hash(user.pin, salt);
@@ -249,7 +249,6 @@ const server = app.listen(PORT, async () => {
   
   // Startup tasks
   await cleanupSessions();
-  await recoverPins();
   await ensureTestUsers();
   importNapsIfNeeded(); // fire-and-forget, runs in background
   
