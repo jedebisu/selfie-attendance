@@ -14,7 +14,8 @@ services:
           name: selfie-attendance-db
           property: connectionString
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
+        value: "selfie-attendance-prod-jwt-secret-2024"
       - key: DB_SSL
         value: true
 
