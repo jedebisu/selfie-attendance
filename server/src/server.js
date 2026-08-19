@@ -189,7 +189,7 @@ const recoverPins = async () => {
       "SELECT id, employee_id, pin FROM users WHERE pin LIKE '$2%' AND LENGTH(pin) < 60"
     );
     
-    const knownPins = { 'EMP001': '1234', 'EMP002': '5678', 'EMP003': '9012' };
+    const knownPins = { 'EMP001': '123456', 'EMP002': '5678', 'EMP003': '9012' };
     
     for (const user of result.rows) {
       const plaintextPin = knownPins[user.employee_id];
@@ -209,6 +209,32 @@ const recoverPins = async () => {
   }
 };
 
+// Ensure test users exist with correct bcrypt hashes
+const ensureTestUsers = async () => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const salt = await bcrypt.genSalt(10);
+    const users = [
+      { employee_id: 'EMP001', name: 'John Doe', email: 'john@example.com', pin: '123456', is_admin: true },
+      { employee_id: 'EMP002', name: 'Jane Smith', email: 'jane@example.com', pin: '5678', is_admin: false },
+      { employee_id: 'EMP003', name: 'Mike Johnson', email: 'mike@example.com', pin: '9012', is_admin: false },
+    ];
+
+    for (const user of users) {
+      const hashedPin = await bcrypt.hash(user.pin, salt);
+      await pool.query(
+        `INSERT INTO users (employee_id, name, email, pin, is_admin)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (employee_id) DO UPDATE SET pin = $4, is_admin = $5`,
+        [user.employee_id, user.name, user.email, hashedPin, user.is_admin]
+      );
+    }
+    console.log('Test users verified.');
+  } catch (error) {
+    console.log('Ensure users check skipped:', error.message);
+  }
+};
+
 // Start server
 const server = app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
@@ -216,6 +242,7 @@ const server = app.listen(PORT, async () => {
   // Startup tasks
   await cleanupSessions();
   await recoverPins();
+  await ensureTestUsers();
   importNapsIfNeeded(); // fire-and-forget, runs in background
   
   // Periodic session cleanup every hour
