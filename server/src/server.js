@@ -38,8 +38,16 @@ app.use('/api/naps', napsRoutes);
 // Health check
 app.get('/api/health', async (req, res) => {
   try {
-    await pool.query('SELECT NOW()');
-    res.json({ status: 'ok', timestamp: new Date() });
+    const dbCheck = await pool.query('SELECT NOW()');
+    const userCheck = await pool.query('SELECT COUNT(*) as count FROM users');
+    const napsCheck = await pool.query('SELECT COUNT(*) as count FROM naps');
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date(),
+      users: parseInt(userCheck.rows[0].count),
+      naps: parseInt(napsCheck.rows[0].count),
+      dbTime: dbCheck.rows[0].now
+    });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
