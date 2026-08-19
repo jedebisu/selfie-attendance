@@ -2,10 +2,17 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../config/database');
 const { processAttendancePhoto } = require('../utils/imageProcessor');
 const { authenticateToken } = require('../middleware/auth');
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '../../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -105,8 +112,8 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
       record: result.rows[0]
     });
   } catch (error) {
-    console.error('Error recording attendance:', error);
-    res.status(500).json({ error: 'Failed to record attendance' });
+    console.error('Error recording attendance:', error.message, error.stack);
+    res.status(500).json({ error: 'Failed to record attendance', detail: error.message });
   }
 });
 
