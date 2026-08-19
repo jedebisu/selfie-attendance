@@ -134,6 +134,11 @@ const Calendar = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  useEffect(() => {
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
   const navigateMonth = (dir) => {
     setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
     setSelectedUser(null);

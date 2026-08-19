@@ -16,15 +16,15 @@ router.get('/overview', authenticateToken, async (req, res) => {
       SELECT COUNT(DISTINCT user_id) as present_count
       FROM attendance
       WHERE status = 'clock_in'
-        AND DATE(timestamp) >= $1
-        AND DATE(timestamp) <= $2
+        AND DATE(timestamp + INTERVAL '8 hours') >= $1
+        AND DATE(timestamp + INTERVAL '8 hours') <= $2
     `, [start, end]);
 
     const daysResult = await pool.query(`
-      SELECT COUNT(DISTINCT DATE(timestamp)) as days
+      SELECT COUNT(DISTINCT DATE(timestamp + INTERVAL '8 hours')) as days
       FROM attendance
-      WHERE DATE(timestamp) >= $1
-        AND DATE(timestamp) <= $2
+      WHERE DATE(timestamp + INTERVAL '8 hours') >= $1
+        AND DATE(timestamp + INTERVAL '8 hours') <= $2
     `, [start, end]);
 
     const totalDays = parseInt(daysResult.rows[0].days) || 1;
@@ -36,12 +36,12 @@ router.get('/overview', authenticateToken, async (req, res) => {
       WITH daily_pairs AS (
         SELECT
           user_id,
-          DATE(timestamp) as day,
+          DATE(timestamp + INTERVAL '8 hours') as day,
           MIN(CASE WHEN status = 'clock_in' THEN timestamp END) as clock_in,
           MAX(CASE WHEN status = 'clock_out' THEN timestamp END) as clock_out
         FROM attendance
-        WHERE DATE(timestamp) >= $1 AND DATE(timestamp) <= $2
-        GROUP BY user_id, DATE(timestamp)
+        WHERE DATE(timestamp + INTERVAL '8 hours') >= $1 AND DATE(timestamp + INTERVAL '8 hours') <= $2
+        GROUP BY user_id, DATE(timestamp + INTERVAL '8 hours')
         HAVING MIN(CASE WHEN status = 'clock_in' THEN timestamp END) IS NOT NULL
       )
       SELECT
@@ -56,7 +56,7 @@ router.get('/overview', authenticateToken, async (req, res) => {
       SELECT COUNT(DISTINCT CASE WHEN status = 'clock_in' THEN user_id END) as present,
              COUNT(DISTINCT CASE WHEN status = 'clock_out' THEN user_id END) as clocked_out
       FROM attendance
-      WHERE DATE(timestamp) = CURRENT_DATE
+      WHERE DATE(timestamp + INTERVAL '8 hours') = DATE(NOW() + INTERVAL '8 hours')
     `);
 
     const leaveResult = await pool.query(`
@@ -71,9 +71,9 @@ router.get('/overview', authenticateToken, async (req, res) => {
       SELECT COUNT(DISTINCT user_id) as late_count
       FROM attendance
       WHERE status = 'clock_in'
-        AND DATE(timestamp) >= $1
-        AND DATE(timestamp) <= $2
-        AND EXTRACT(HOUR FROM timestamp) > 9
+        AND DATE(timestamp + INTERVAL '8 hours') >= $1
+        AND DATE(timestamp + INTERVAL '8 hours') <= $2
+        AND EXTRACT(HOUR FROM (timestamp + INTERVAL '8 hours')) > 9
     `, [start, end]);
 
     res.json({
@@ -113,7 +113,7 @@ router.get('/attendance-trend', authenticateToken, async (req, res) => {
           dr.day,
           COUNT(DISTINCT CASE WHEN a.status = 'clock_in' THEN a.user_id END) as present_count
         FROM date_range dr
-        LEFT JOIN attendance a ON DATE(a.timestamp) = dr.day ${userFilter}
+        LEFT JOIN attendance a ON DATE(a.timestamp + INTERVAL '8 hours') = dr.day ${userFilter}
         GROUP BY dr.day
         ORDER BY dr.day
       )
@@ -142,12 +142,12 @@ router.get('/hours-worked', authenticateToken, async (req, res) => {
       WITH daily_pairs AS (
         SELECT
           a.user_id,
-          DATE(a.timestamp) as day,
+          DATE(a.timestamp + INTERVAL '8 hours') as day,
           MIN(CASE WHEN a.status = 'clock_in' THEN a.timestamp END) as clock_in,
           MAX(CASE WHEN a.status = 'clock_out' THEN a.timestamp END) as clock_out
         FROM attendance a
-        WHERE DATE(a.timestamp) >= $1 AND DATE(a.timestamp) <= $2
-        GROUP BY a.user_id, DATE(a.timestamp)
+        WHERE DATE(a.timestamp + INTERVAL '8 hours') >= $1 AND DATE(a.timestamp + INTERVAL '8 hours') <= $2
+        GROUP BY a.user_id, DATE(a.timestamp + INTERVAL '8 hours')
       ),
       user_hours AS (
         SELECT
@@ -190,13 +190,13 @@ router.get('/clock-in-distribution', authenticateToken, async (req, res) => {
 
     const result = await pool.query(`
       SELECT
-        EXTRACT(HOUR FROM timestamp)::int as hour,
+        EXTRACT(HOUR FROM (timestamp + INTERVAL '8 hours'))::int as hour,
         COUNT(*) as count
       FROM attendance
       WHERE status = 'clock_in'
-        AND DATE(timestamp) >= $1
-        AND DATE(timestamp) <= $2
-      GROUP BY EXTRACT(HOUR FROM timestamp)
+        AND DATE(timestamp + INTERVAL '8 hours') >= $1
+        AND DATE(timestamp + INTERVAL '8 hours') <= $2
+      GROUP BY EXTRACT(HOUR FROM (timestamp + INTERVAL '8 hours'))
       ORDER BY hour
     `, [start, end]);
 
@@ -228,14 +228,14 @@ router.get('/day-of-week', authenticateToken, async (req, res) => {
     const result = await pool.query(`
       WITH daily_attendance AS (
         SELECT
-          EXTRACT(DOW FROM DATE(timestamp)) as dow,
-          DATE(timestamp) as day,
+          EXTRACT(DOW FROM DATE(timestamp + INTERVAL '8 hours')) as dow,
+          DATE(timestamp + INTERVAL '8 hours') as day,
           COUNT(DISTINCT user_id) as present_count
         FROM attendance
         WHERE status = 'clock_in'
-          AND DATE(timestamp) >= $1
-          AND DATE(timestamp) <= $2
-        GROUP BY EXTRACT(DOW FROM DATE(timestamp)), DATE(timestamp)
+          AND DATE(timestamp + INTERVAL '8 hours') >= $1
+          AND DATE(timestamp + INTERVAL '8 hours') <= $2
+        GROUP BY EXTRACT(DOW FROM DATE(timestamp + INTERVAL '8 hours')), DATE(timestamp + INTERVAL '8 hours')
       ),
       avg_by_dow AS (
         SELECT

@@ -19,10 +19,10 @@ router.get('/attendance', authenticateToken, async (req, res) => {
     let pc = 0;
 
     if (user_id) { pc++; query += ` AND a.user_id = $${pc}`; params.push(user_id); }
-    if (date) { pc++; query += ` AND DATE(a.timestamp) = $${pc}`; params.push(date); }
+    if (date) { pc++; query += ` AND DATE(a.timestamp + INTERVAL '8 hours') = $${pc}`; params.push(date); }
     if (status) { pc++; query += ` AND a.status = $${pc}`; params.push(status); }
-    if (start_date) { pc++; query += ` AND DATE(a.timestamp) >= $${pc}`; params.push(start_date); }
-    if (end_date) { pc++; query += ` AND DATE(a.timestamp) <= $${pc}`; params.push(end_date); }
+    if (start_date) { pc++; query += ` AND DATE(a.timestamp + INTERVAL '8 hours') >= $${pc}`; params.push(start_date); }
+    if (end_date) { pc++; query += ` AND DATE(a.timestamp + INTERVAL '8 hours') <= $${pc}`; params.push(end_date); }
 
     query += ' ORDER BY a.timestamp DESC';
 
