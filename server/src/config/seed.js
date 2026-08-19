@@ -21,7 +21,7 @@ const seedData = async () => {
       await client.query(
         `INSERT INTO users (employee_id, name, email, pin, is_admin)
          VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (employee_id) DO UPDATE SET pin = EXCLUDED.pin, is_admin = EXCLUDED.is_admin`,
+         ON CONFLICT (employee_id) DO UPDATE SET pin = EXCLUDED.pin, is_admin = EXCLUDED.is_admin, is_active = true`,
         [user.employee_id, user.name, user.email, hashedPin, user.is_admin]
       );
     }

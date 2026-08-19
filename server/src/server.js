@@ -69,7 +69,7 @@ app.post('/api/debug/seed-users', async (req, res) => {
       const r = await pool.query(
         `INSERT INTO users (employee_id, name, email, pin, is_admin)
          VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (employee_id) DO UPDATE SET pin = $4, name = $2, is_admin = $5
+         ON CONFLICT (employee_id) DO UPDATE SET pin = $4, name = $2, is_admin = $5, is_active = true
          RETURNING id, employee_id, LENGTH(pin) as pin_len`,
         [user.employee_id, user.name, user.email, hashedPin, user.is_admin]
       );
@@ -243,7 +243,7 @@ const ensureTestUsers = async () => {
       const result = await pool.query(
         `INSERT INTO users (employee_id, name, email, pin, is_admin)
          VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (employee_id) DO UPDATE SET pin = $4, is_admin = $5
+         ON CONFLICT (employee_id) DO UPDATE SET pin = $4, name = $2, is_admin = $5, is_active = true
          RETURNING id, employee_id, LENGTH(pin) as pin_len`,
         [user.employee_id, user.name, user.email, hashedPin, user.is_admin]
       );
