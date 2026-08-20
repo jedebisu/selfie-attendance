@@ -4,7 +4,7 @@ import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   isToday, isWeekend, isFuture, addMonths, subMonths, startOfWeek, endOfWeek
 } from 'date-fns';
-import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -134,11 +134,6 @@ const Calendar = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  useEffect(() => {
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
-
   const navigateMonth = (dir) => {
     setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
     setSelectedUser(null);
@@ -158,6 +153,7 @@ const Calendar = () => {
           <p className="subtitle">Per-employee monthly attendance view</p>
         </div>
         <div className="calendar-nav">
+          <button className="btn btn-icon" onClick={fetchData} title="Refresh"><RefreshCw size={18} /></button>
           <button className="btn btn-icon" onClick={() => navigateMonth(-1)}><ChevronLeft size={24} /></button>
           <span className="calendar-month-label">{format(currentDate, 'MMMM yyyy')}</span>
           <button className="btn btn-icon" onClick={() => navigateMonth(1)}><ChevronRight size={24} /></button>
