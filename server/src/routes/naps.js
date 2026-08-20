@@ -159,38 +159,46 @@ router.get('/stats/summary', async (req, res) => {
 // Search NAPs by ID, building, city, etc.
 router.get('/search', async (req, res) => {
   try {
-    const { q, limit = 20 } = req.query;
+    const { q, limit = 100 } = req.query;
 
     if (!q || q.trim().length < 2) {
       return res.status(400).json({ error: 'Search query must be at least 2 characters' });
     }
 
-    const searchTerm = `%${q.trim()}%`;
+    const searchTrimmed = q.trim();
+    const searchTerm = `%${searchTrimmed}%`;
+
     const result = await pool.query(`
-      SELECT 
+      SELECT
         id, nap_id, cabinet, location_type, building_served, floors_served,
         working_lines, vacant_lines, total_capacity, cfs_region,
-        city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long, 
+        city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
         naps_status, olt_id, sell_status,
-        CASE 
+        CASE
           WHEN vacant_lines = 0 THEN 'red'
           WHEN vacant_lines <= 8 THEN 'yellow'
           ELSE 'green'
-        END as marker_color
-      FROM naps 
+        END as marker_color,
+        CASE
+          WHEN UPPER(nap_id) = UPPER($1) THEN 0
+          WHEN UPPER(nap_id) LIKE UPPER($2) THEN 1
+          WHEN UPPER(nap_id) LIKE UPPER($3) THEN 2
+          ELSE 3
+        END as relevance
+      FROM naps
       WHERE (
-        UPPER(nap_id) LIKE UPPER($1)
-        OR UPPER(building_served) LIKE UPPER($1)
-        OR UPPER(city_name) LIKE UPPER($1)
-        OR UPPER(province_name) LIKE UPPER($1)
-        OR UPPER(barangay_name) LIKE UPPER($1)
-        OR UPPER(cabinet) LIKE UPPER($1)
+        UPPER(nap_id) LIKE UPPER($3)
+        OR UPPER(building_served) LIKE UPPER($3)
+        OR UPPER(city_name) LIKE UPPER($3)
+        OR UPPER(province_name) LIKE UPPER($3)
+        OR UPPER(barangay_name) LIKE UPPER($3)
+        OR UPPER(cabinet) LIKE UPPER($3)
       )
-      AND dp_nap_lat BETWEEN 9.5 AND 12.5
-      AND dp_nap_long BETWEEN 122 AND 127
-      ORDER BY nap_id
-      LIMIT $2
-    `, [searchTerm, limit]);
+      AND dp_nap_lat BETWEEN 4 AND 21
+      AND dp_nap_long BETWEEN 116 AND 127
+      ORDER BY relevance, nap_id
+      LIMIT $4
+    `, [searchTrimmed, `${searchTrimmed}%`, searchTerm, limit]);
 
     res.json({
       count: result.rows.length,

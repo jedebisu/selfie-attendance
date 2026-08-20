@@ -63,6 +63,18 @@ function parseFloatSafe(val) {
     return isNaN(n) ? null : n;
 }
 
+function splitCamelCase(val) {
+    if (!val) return null;
+    return val.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+}
+
+function isValidPHCoordinate(lat, lng) {
+    return lat != null && lng != null
+        && Number.isFinite(lat) && Number.isFinite(lng)
+        && lat >= 4 && lat <= 21
+        && lng >= 116 && lng <= 127;
+}
+
 async function importNaps(excelPath) {
     console.log(`Reading Excel: ${excelPath}`);
     
@@ -99,11 +111,7 @@ async function importNaps(excelPath) {
 
         const lat = parseFloatSafe(row[7]);
         const lng = parseFloatSafe(row[8]);
-
-        if (!lat || !lng) { skipped++; continue; }
-
-        // Skip obviously invalid coordinates
-        if (lat < 4 || lat > 21 || lng < 116 || lng > 127) { skipped++; continue; }
+        if (!isValidPHCoordinate(lat, lng)) { skipped++; continue; }
 
         batch.push({
             nap_id: napId,
@@ -114,10 +122,10 @@ async function importNaps(excelPath) {
             working_lines: parseIntSafe(row[14]),
             vacant_lines: parseIntSafe(row[18]),
             total_capacity: parseIntSafe(row[13]),
-            cfs_region: cleanValue(row[19], 100),
-            city_name: cleanValue(row[20], 100),
-            province_name: cleanValue(row[19], 100),
-            barangay_name: cleanValue(row[21], 100),
+            cfs_region: splitCamelCase(cleanValue(row[19], 100)),
+            city_name: splitCamelCase(cleanValue(row[20], 100)),
+            province_name: splitCamelCase(cleanValue(row[19], 100)),
+            barangay_name: splitCamelCase(cleanValue(row[21], 100)),
             dp_nap_lat: lat,
             dp_nap_long: lng,
             naps_status: cleanValue(row[2], 50),
