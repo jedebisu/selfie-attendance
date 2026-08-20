@@ -39,7 +39,11 @@ const CameraScreen = ({ navigation, route }) => {
     setLoading(true);
 
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.7,
+        skipProcessing: false,
+        exif: false
+      });
 
       const dir = FileSystem.documentDirectory + 'offline_photos/';
       const dirInfo = await FileSystem.getInfoAsync(dir);
@@ -112,7 +116,11 @@ const CameraScreen = ({ navigation, route }) => {
         const filename = `selfie_${Date.now()}.jpg`;
         const localPath = dir + filename;
 
-        const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.7,
+          skipProcessing: false,
+          exif: false
+        });
         await FileSystem.copyAsync({ from: photo.uri, to: localPath });
 
         await addToQueue({
