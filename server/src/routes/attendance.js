@@ -117,6 +117,27 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
   }
 });
 
+// Get current user's today summary (for mobile app; MUST be before /:id)
+router.get('/summary/me', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT 
+        MIN(CASE WHEN a.status = 'clock_in' THEN a.timestamp END) as clock_in,
+        MAX(CASE WHEN a.status = 'clock_out' THEN a.timestamp END) as clock_out,
+        COUNT(CASE WHEN a.status = 'clock_in' THEN 1 END) as clock_in_count
+       FROM users u
+       LEFT JOIN attendance a ON u.id = a.user_id AND DATE(a.timestamp + INTERVAL '8 hours') = DATE(NOW() + INTERVAL '8 hours')
+       WHERE u.id = $1`,
+      [req.user.id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching today summary:', error);
+    res.status(500).json({ error: 'Failed to fetch today summary' });
+  }
+});
+
 // Get today's attendance summary (MUST be before /:id to avoid route conflict)
 router.get('/summary/today', authenticateToken, async (req, res) => {
   try {
