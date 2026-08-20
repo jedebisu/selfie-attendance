@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../config/database');
 const { processAttendancePhoto } = require('../utils/imageProcessor');
 const { authenticateToken } = require('../middleware/auth');
+const { isConfigured: isCloudinaryConfigured, uploadPhoto } = require('../config/cloudinary');
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, '../../uploads');
@@ -89,6 +90,25 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
       locationName: location_name || null
     });
 
+    // Upload to Cloudinary when configured, so photos persist across
+    // redeploys (Render free tier has no persistent disk)
+    let photoUrl = `/uploads/${processedFilename}`;
+    let originalPhotoUrl = `/uploads/${photoFile.filename}`;
+
+    if (isCloudinaryConfigured) {
+      try {
+        photoUrl = await uploadPhoto(processedPath);
+        originalPhotoUrl = await uploadPhoto(photoFile.path);
+      } catch (uploadError) {
+        console.error('Cloudinary upload failed, falling back to local storage:', uploadError.message);
+        photoUrl = `/uploads/${processedFilename}`;
+        originalPhotoUrl = `/uploads/${photoFile.filename}`;
+      }
+      // Remove temp files from the ephemeral disk after upload
+      try { fs.unlinkSync(photoFile.path); } catch (e) { /* ignore */ }
+      try { fs.unlinkSync(processedPath); } catch (e) { /* ignore */ }
+    }
+
     // Insert attendance record
     const result = await pool.query(
       `INSERT INTO attendance (user_id, photo_url, original_photo_url, latitude, longitude, location_name, status, device_info, timestamp)
@@ -96,8 +116,8 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
        RETURNING *`,
       [
         user_id,
-        `/uploads/${processedFilename}`,
-        `/uploads/${photoFile.filename}`,
+        photoUrl,
+        originalPhotoUrl,
         latitude || null,
         longitude || null,
         location_name || null,
