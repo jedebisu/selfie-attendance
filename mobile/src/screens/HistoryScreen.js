@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { attendanceAPI } from '../services/api';
 import { getCachedHistory, cacheHistory } from '../services/cache';
 import { checkConnection } from '../services/network';
 
-const HistoryScreen = () => {
+const HistoryScreen = memo(() => {
   const { user } = useAuth();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -116,7 +116,7 @@ const HistoryScreen = () => {
       />
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

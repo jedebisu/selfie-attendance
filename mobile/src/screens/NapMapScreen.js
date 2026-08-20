@@ -7,7 +7,7 @@ import MapView, { Marker, Callout, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
-import { debounce } from '../utils/helpers';
+import { debounce, parseCoordinate } from '../utils/helpers';
 
 const COLORS = {
   green: '#22c55e',
@@ -89,7 +89,7 @@ const NapMapScreen = ({ navigation }) => {
 
       try {
         setSearching(true);
-        const response = await napsAPI.search({ q: query, limit: 30 });
+        const response = await napsAPI.search({ q: query, limit: 100 });
         setSearchResults(response.naps || []);
       } catch (error) {
         console.error('Error searching NAPs:', error);
@@ -114,14 +114,13 @@ const NapMapScreen = ({ navigation }) => {
 
   const flyToNap = (nap) => {
     if (!mapRef.current) return;
-    
+    const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
+    if (!c) return;
     const region = {
-      latitude: parseFloat(nap.dp_nap_lat),
-      longitude: parseFloat(nap.dp_nap_long),
+      ...c,
       latitudeDelta: 0.005,
       longitudeDelta: 0.005,
     };
-    
     mapRef.current.animateToRegion(region, 500);
     setSelectedNap(nap);
     setShowList(false);
@@ -140,14 +139,13 @@ const NapMapScreen = ({ navigation }) => {
   };
 
   const renderNapMarker = (nap) => {
+    const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
+    if (!c) return null;
     const color = getMarkerColor(nap.vacant_lines);
     return (
       <Marker
         key={nap.id}
-        coordinate={{
-          latitude: parseFloat(nap.dp_nap_lat),
-          longitude: parseFloat(nap.dp_nap_long),
-        }}
+        coordinate={c}
         pinColor={color}
         onPress={() => setSelectedNap(nap)}
       >
@@ -160,7 +158,7 @@ const NapMapScreen = ({ navigation }) => {
             </Text>
             {nap.distance_km !== undefined && (
               <Text style={styles.calloutText}>
-                {nap.distance_km < 1 
+                {nap.distance_km < 1
                   ? `${Math.round(nap.distance_km * 1000)}m away`
                   : `${nap.distance_km.toFixed(1)}km away`
                 }
@@ -174,6 +172,7 @@ const NapMapScreen = ({ navigation }) => {
 
   const renderNapListItem = ({ item: nap }) => {
     const color = getMarkerColor(nap.vacant_lines);
+    const address = [nap.barangay_name, nap.city_name, nap.province_name].filter(Boolean).join(', ') || 'N/A';
     return (
       <TouchableOpacity 
         style={styles.listItem}
@@ -182,26 +181,9 @@ const NapMapScreen = ({ navigation }) => {
         <View style={[styles.colorDot, { backgroundColor: color }]} />
         <View style={styles.listItemContent}>
           <Text style={styles.listItemTitle}>{nap.nap_id}</Text>
-          <Text style={styles.listItemSubtitle} numberOfLines={1}>
-            {nap.building_served || 'N/A'}
-          </Text>
-          <Text style={styles.listItemAddress} numberOfLines={1}>
-            {nap.city_name || 'N/A'}
-          </Text>
-        </View>
-        <View style={styles.listItemRight}>
-          <View style={styles.listItemPorts}>
-            <Text style={[styles.portCount, { color }]}>{nap.vacant_lines}</Text>
-            <Text style={styles.portLabel}>spare</Text>
-          </View>
-          {nap.distance_km !== undefined && (
-            <Text style={styles.distanceText}>
-              {nap.distance_km < 1 
-                ? `${Math.round(nap.distance_km * 1000)}m`
-                : `${nap.distance_km.toFixed(1)}km`
-              }
-            </Text>
-          )}
+          <FieldRow label="Physical Status" value={nap.naps_status} />
+          <FieldRow label="NAP Location" value={nap.location_type} />
+          <FieldRow label="NAP Address" value={address} />
         </View>
       </TouchableOpacity>
     );
@@ -357,6 +339,13 @@ const InfoRow = ({ label, value }) => (
   </View>
 );
 
+const FieldRow = ({ label, value }) => (
+  <Text style={styles.listItemField} numberOfLines={1}>
+    <Text style={styles.listItemFieldLabel}>{label}: </Text>
+    {value || 'N/A'}
+  </Text>
+);
+
 const PortBox = ({ label, value, color }) => (
   <View style={styles.portBox}>
     <Text style={[styles.portValue, { color }]}>{value}</Text>
@@ -483,25 +472,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.gray,
   },
-  listItemRight: {
-    alignItems: 'flex-end',
-    marginLeft: 12,
+  listItemField: {
+    fontSize: 12,
+    color: COLORS.gray,
+    marginTop: 2,
   },
-  listItemPorts: {
-    alignItems: 'center',
-  },
-  portCount: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  listItemFieldLabel: {
+    color: COLORS.dark,
+    fontWeight: '600',
   },
   portLabel: {
     fontSize: 10,
     color: COLORS.gray,
-  },
-  distanceText: {
-    fontSize: 11,
-    color: COLORS.blue,
-    marginTop: 4,
   },
   emptyList: {
     padding: 40,

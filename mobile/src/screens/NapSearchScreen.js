@@ -6,7 +6,7 @@ import {
 import MapView, { Marker, Callout } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
 import { napsAPI } from '../services/api';
-import { debounce } from '../utils/helpers';
+import { debounce, parseCoordinate } from '../utils/helpers';
 
 const COLORS = {
   green: '#22c55e',
@@ -130,40 +130,38 @@ const NapSearchScreen = ({ navigation }) => {
       )}
 
       {/* Map */}
-      {results.length > 0 && (
+      {results.length > 0 && results.some(nap => parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long)) && (
         <MapView
           style={styles.map}
-          initialRegion={{
-            latitude: results[0]?.dp_nap_lat || 10.3157,
-            longitude: results[0]?.dp_nap_long || 123.8854,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}
-          region={selectedNap ? {
-            latitude: parseFloat(selectedNap.dp_nap_lat),
-            longitude: parseFloat(selectedNap.dp_nap_long),
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          } : undefined}
+          initialRegion={(() => {
+            const firstValid = results.find(nap => parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long));
+            const c = parseCoordinate(firstValid?.dp_nap_lat, firstValid?.dp_nap_long);
+            return c ? { ...c, latitudeDelta: 0.05, longitudeDelta: 0.05 } : { latitude: 10.3157, longitude: 123.8854, latitudeDelta: 0.5, longitudeDelta: 0.5 };
+          })()}
+          region={(() => {
+            if (!selectedNap) return undefined;
+            const c = parseCoordinate(selectedNap.dp_nap_lat, selectedNap.dp_nap_long);
+            return c ? { ...c, latitudeDelta: 0.01, longitudeDelta: 0.01 } : undefined;
+          })()}
         >
-          {results.map((nap) => (
-            <Marker
-              key={nap.id}
-              coordinate={{
-                latitude: parseFloat(nap.dp_nap_lat),
-                longitude: parseFloat(nap.dp_nap_long),
-              }}
-              pinColor={getMarkerColor(nap.vacant_lines)}
-              onPress={() => handleSelectNap(nap)}
-            >
-              <Callout onPress={() => handleSelectNap(nap)}>
-                <View style={styles.callout}>
-                  <Text style={styles.calloutTitle}>{nap.nap_id}</Text>
-                  <Text style={styles.calloutText}>{nap.building_served || 'N/A'}</Text>
-                </View>
-              </Callout>
-            </Marker>
-          ))}
+          {results.filter(nap => parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long)).map((nap) => {
+            const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
+            return (
+              <Marker
+                key={nap.id}
+                coordinate={c}
+                pinColor={getMarkerColor(nap.vacant_lines)}
+                onPress={() => handleSelectNap(nap)}
+              >
+                <Callout onPress={() => handleSelectNap(nap)}>
+                  <View style={styles.callout}>
+                    <Text style={styles.calloutTitle}>{nap.nap_id}</Text>
+                    <Text style={styles.calloutText}>{nap.building_served || 'N/A'}</Text>
+                  </View>
+                </Callout>
+              </Marker>
+            );
+          })}
         </MapView>
       )}
 

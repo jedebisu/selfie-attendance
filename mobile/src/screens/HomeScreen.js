@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
@@ -8,7 +8,7 @@ import { checkConnection } from '../services/network';
 import { getQueueLength } from '../services/offlineQueue';
 import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notifications';
 
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = memo(({ navigation }) => {
   const { user, logout } = useAuth();
   const [todaySummary, setTodaySummary] = useState(null);
   const [isOnline, setIsOnline] = useState(true);
@@ -157,22 +157,15 @@ const HomeScreen = ({ navigation }) => {
         <Text style={styles.historyButtonText}>View History</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity 
-        style={[styles.historyButton, { backgroundColor: '#1a1d23', marginTop: 12 }]} 
+      <TouchableOpacity
+        style={[styles.historyButton, { backgroundColor: '#1a1d23', marginTop: 12 }]}
         onPress={() => navigation.navigate('NapMap')}
       >
         <Text style={[styles.historyButtonText, { color: '#fff' }]}>CVN | CVS Naps</Text>
       </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={[styles.historyButton, { backgroundColor: '#c8956c', marginTop: 12 }]} 
-        onPress={() => navigation.navigate('NapSearch')}
-      >
-        <Text style={[styles.historyButtonText, { color: '#fff' }]}>Find NAP</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
