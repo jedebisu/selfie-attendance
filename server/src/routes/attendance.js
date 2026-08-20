@@ -170,8 +170,8 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
         DATE(a.timestamp + INTERVAL '8 hours') as attendance_date
        FROM users u
        LEFT JOIN attendance a ON u.id = a.user_id 
-         AND a.timestamp >= $1 
-         AND a.timestamp < $2
+         AND DATE(a.timestamp + INTERVAL '8 hours') >= $1::date
+         AND DATE(a.timestamp + INTERVAL '8 hours') < $2::date
        WHERE u.is_active = true
        ORDER BY u.name, a.timestamp`,
       [startDate, endDate]
@@ -209,15 +209,7 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
         });
         if (row.status === 'clock_in') {
           users[row.user_id].days[dateKey].clock_in = row.timestamp;
-          const localTime = new Date(row.timestamp);
-          localTime.setHours(localTime.getHours() + 8);
-          const clockInHour = localTime.getHours();
-          const clockInMinute = localTime.getMinutes();
-          if (clockInHour > 11 || (clockInHour === 11 && clockInMinute > 0)) {
-            users[row.user_id].days[dateKey].status = 'absent';
-          } else {
-            users[row.user_id].days[dateKey].status = 'present';
-          }
+          users[row.user_id].days[dateKey].status = 'present';
         }
         if (row.status === 'clock_out') {
           users[row.user_id].days[dateKey].clock_out = row.timestamp;
