@@ -4,26 +4,25 @@
  * 
  * Usage: node src/config/import-naps-facility.js /path/to/file.csv
  * 
- * CSV is semicolon-delimited, 24 columns:
- *   0: Location (parent NAP ID)
- *   1: NAP ID (with suffix like A/B)
- *   2: Physical Status
- *   3: NAP Location (Indoor/Outdoor)
- *   4: Serving Building/Property/Tower
- *   5: Serving Floors
- *   6-11: NAP Address (split across cols due to semicolons in address)
- *   12: Latitude
- *   13: Longitude
- *   14: Discovered When
- *   15: Customer Type
- *   16: OLT ID
- *   17: OLT Port (cabinet)
- *   18: Ports Total
- *   19: Ports Assigned
- *   20: Ports Reserved
- *   21: Ports Defective
- *   22: Ports Contingency
- *   23: Ports Available
+ * CSV is semicolon-delimited. Report header (row 5 in raw exports) has 19
+ * columns; the NAP Address field (col 6) contains embedded semicolons, so
+ * parsed rows have variable column counts. The 12 trailing fields after the
+ * address are always:
+ *   -12: Latitude
+ *   -11: Longitude
+ *   -10: Discovered When
+ *   -9: Customer Type
+ *   -8: OLT ID
+ *   -7: OLT Port (cabinet)
+ *   -6: Ports Total
+ *   -5: Ports Assigned
+ *   -4: Ports Reserved
+ *   -3: Ports Defective
+ *   -2: Ports Contingency
+ *   -1: Ports Available
+ * Fixed columns: 0 Location, 1 NAP ID, 2 Physical Status, 3 NAP Location,
+ * 4 Serving Building, 5 Serving Floors, 6..-13 NAP Address.
+ * Backward compatible with the older 24-column export (address at 6-11).
  */
 
 const fs = require('fs');
@@ -90,8 +89,16 @@ async function importNaps(csvPath) {
   const content = fs.readFileSync(csvPath, 'utf-8');
   const lines = content.split('\n');
   
-  // Skip header
-  const dataLines = lines.slice(1).filter(l => l.trim());
+  // Find the column header row (handles report files with leading title rows,
+  // e.g. rows 0-4 in the raw NAP Facility Summary Report export)
+  let headerIdx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('NAP ID') && lines[i].includes('Latitude')) {
+      headerIdx = i;
+      break;
+    }
+  }
+  const dataLines = lines.slice(headerIdx + 1).filter(l => l.trim());
   console.log(`Total data lines: ${dataLines.length}`);
 
   let imported = 0;
@@ -102,7 +109,12 @@ async function importNaps(csvPath) {
     const line = dataLines[i].replace(/\r/g, '');
     const parts = line.split(';');
 
-    if (parts.length < 24) {
+    // The NAP Address field (col 6) contains embedded semicolons, so the raw
+    // split count varies per row. Anchor from the end: the 12 trailing fields
+    // after the address are always lat, lng, discovered, customer type,
+    // OLT ID, OLT Port, ports total, assigned, reserved, defective,
+    // contingency, available.
+    if (parts.length < 19) {
       skipped++;
       continue;
     }
@@ -110,8 +122,8 @@ async function importNaps(csvPath) {
     const napId = cleanValue(parts[1]);
     if (!napId) { skipped++; continue; }
 
-    const lat = parseFloatSafe(parts[12]);
-    const lng = parseFloatSafe(parts[13]);
+    const lat = parseFloatSafe(parts[parts.length - 12]);
+    const lng = parseFloatSafe(parts[parts.length - 11]);
 
     // Skip NAPs without coordinates
     if (!lat || !lng) { skipped++; continue; }
@@ -119,24 +131,24 @@ async function importNaps(csvPath) {
     // Skip obviously invalid coordinates (outside Philippines)
     if (lat < 4 || lat > 21 || lng < 116 || lng > 127) { skipped++; continue; }
 
-    const { city, region } = extractFromAddress(parts.slice(6, 12));
+    const { city, region } = extractFromAddress(parts.slice(6, parts.length - 12));
 
     batch.push({
       nap_id: napId,
-      cabinet: cleanValue(parts[17], 100),
+      cabinet: cleanValue(parts[parts.length - 7], 100),
       location_type: cleanValue(parts[3], 50),
       building_served: cleanValue(parts[4], 500),
       floors_served: cleanValue(parts[5], 200),
-      working_lines: parseIntSafe(parts[19]),
-      vacant_lines: parseIntSafe(parts[23]),
-      total_capacity: parseIntSafe(parts[18]),
+      working_lines: parseIntSafe(parts[parts.length - 5]),
+      vacant_lines: parseIntSafe(parts[parts.length - 1]),
+      total_capacity: parseIntSafe(parts[parts.length - 6]),
       cfs_region: region || null,
       city_name: city ? (city.length > 100 ? city.substring(0, 100) : city) : null,
       province_name: region || null,
       dp_nap_lat: lat,
       dp_nap_long: lng,
       naps_status: cleanValue(parts[2], 50),
-      olt_id: cleanValue(parts[16], 100),
+      olt_id: cleanValue(parts[parts.length - 8], 100),
       sell_status: cleanValue(parts[2], 50),
     });
 
