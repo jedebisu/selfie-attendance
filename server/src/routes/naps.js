@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../config/database');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const fs = require('fs');
+const path = require('path');
+const zlib = require('zlib');
 
 // Get all NAPs (with optional filters)
 router.get('/', async (req, res) => {
@@ -209,6 +213,149 @@ router.get('/search', async (req, res) => {
     res.status(500).json({ error: 'Failed to search NAPs' });
   }
 });
+
+// Admin-only: re-import NAPs from the committed naps_export.csv.gz (upsert)
+router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const gzPath = path.join(__dirname, '..', 'config', 'naps_export.csv.gz');
+    if (!fs.existsSync(gzPath)) {
+      return res.status(404).json({ error: 'naps_export.csv.gz not found on server' });
+    }
+
+    const csv = zlib.gunzipSync(fs.readFileSync(gzPath)).toString('utf-8');
+    const lines = csv.split('\n');
+
+    // 17 params per row; PostgreSQL caps bind at 65535 params, so keep
+    // batches at or below 3800 rows (3800 * 17 = 64600)
+    const BATCH_SIZE = 3000;
+    let imported = 0;
+    let batch = [];
+
+    await client.query('BEGIN');
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].replace(/\r/g, '');
+      if (!line.trim()) continue;
+
+      const f = parseCsvLine17(line);
+      if (f.length < 17) continue;
+
+      batch.push(f);
+      if (batch.length >= BATCH_SIZE) {
+        await upsertNapsBatch(client, batch);
+        imported += batch.length;
+        batch = [];
+        console.log(`NAP import: ${imported} rows...`);
+      }
+    }
+
+    if (batch.length > 0) {
+      await upsertNapsBatch(client, batch);
+      imported += batch.length;
+    }
+
+    await client.query('COMMIT');
+
+    const stats = await pool.query(`
+      SELECT
+        COUNT(*) AS total_naps,
+        SUM(total_capacity) AS total_ports,
+        SUM(working_lines) AS used_ports,
+        SUM(vacant_lines) AS available_ports
+      FROM naps
+    `);
+
+    res.json({ imported, ...stats.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('NAP import failed:', error);
+    res.status(500).json({ error: 'Import failed', message: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+function str(val, maxLen) {
+  if (!val) return null;
+  val = val.trim();
+  if (!val) return null;
+  if (maxLen && val.length > maxLen) val = val.substring(0, maxLen);
+  return val;
+}
+
+function parseCsvLine17(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+async function upsertNapsBatch(client, batch) {
+  const values = [];
+  const placeholders = [];
+
+  batch.forEach((f, i) => {
+    const offset = i * 17;
+    placeholders.push(`(${Array.from({ length: 17 }, (_, j) => `$${offset + j + 1}`).join(',')})`);
+    values.push(
+      str(f[0], 100),   // nap_id
+      str(f[1], 100),   // cabinet
+      str(f[2], 50),    // location_type
+      str(f[3], 500),   // building_served
+      str(f[4], 500),   // floors_served
+      parseInt(f[5]) || 0,  // working_lines
+      parseInt(f[6]) || 0,  // vacant_lines
+      parseInt(f[7]) || 0,  // total_capacity
+      str(f[8], 100),   // cfs_region
+      str(f[9], 100),   // city_name
+      str(f[10], 100),  // province_name
+      parseFloat(f[11]) || null, // dp_nap_lat
+      parseFloat(f[12]) || null, // dp_nap_long
+      str(f[13], 50),   // naps_status
+      str(f[14], 100),  // olt_id
+      str(f[15], 50),   // sell_status
+      str(f[16], 100)   // barangay_name
+    );
+  });
+
+  await client.query(`
+    INSERT INTO naps (nap_id, cabinet, location_type, building_served, floors_served,
+      working_lines, vacant_lines, total_capacity, cfs_region, city_name, province_name,
+      dp_nap_lat, dp_nap_long, naps_status, olt_id, sell_status, barangay_name)
+    VALUES ${placeholders.join(', ')}
+    ON CONFLICT (nap_id) DO UPDATE SET
+      cabinet = EXCLUDED.cabinet,
+      location_type = EXCLUDED.location_type,
+      building_served = EXCLUDED.building_served,
+      floors_served = EXCLUDED.floors_served,
+      working_lines = EXCLUDED.working_lines,
+      vacant_lines = EXCLUDED.vacant_lines,
+      total_capacity = EXCLUDED.total_capacity,
+      cfs_region = EXCLUDED.cfs_region,
+      city_name = EXCLUDED.city_name,
+      province_name = EXCLUDED.province_name,
+      dp_nap_lat = EXCLUDED.dp_nap_lat,
+      dp_nap_long = EXCLUDED.dp_nap_long,
+      naps_status = EXCLUDED.naps_status,
+      olt_id = EXCLUDED.olt_id,
+      sell_status = EXCLUDED.sell_status,
+      barangay_name = EXCLUDED.barangay_name,
+      updated_at = NOW()
+  `, values);
+}
 
 // Get NAP details by ID (MUST be after /stats/summary and /search)
 router.get('/:napId', async (req, res) => {
