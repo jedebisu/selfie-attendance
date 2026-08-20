@@ -3,6 +3,13 @@ import axios from 'axios';
 const BASE_URL = process.env.REACT_APP_API_URL || 'https://selfie-api-sqgh.onrender.com/api';
 export const SERVER_URL = BASE_URL.replace(/\/api$/, '');
 
+// Resolve a photo URL: Cloudinary returns absolute https URLs,
+// legacy records use relative /uploads/ paths served by the API server
+export const photoUrl = (url) => {
+  if (!url) return '';
+  return url.startsWith('http') ? url : `${SERVER_URL}${url}`;
+};
+
 export const api = axios.create({
   baseURL: BASE_URL,
   timeout: 30000,
