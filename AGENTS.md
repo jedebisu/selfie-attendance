@@ -51,7 +51,8 @@ eas build --platform android --profile preview   # APK build
 
 - **Dashboard build requires `CI=false`** — CRA treats lint warnings as errors. The `build` script in `dashboard/package.json` is `CI=false react-scripts build`. Vercel also has `CI=false` env var set. Never remove this.
 - **Database config differs by env** — Local dev uses `DB_USER`/`DB_HOST`/etc. vars. Production (Render) uses `DATABASE_URL` connection string. `server/src/config/database.js` handles both. Don't hardcode either.
-- **`uploads/` directory is ephemeral on Render free tier** — Uploaded photos may not persist across deploys/restarts. The `uploads/.gitkeep` is committed; `uploads/*` is gitignored.
+- **`uploads/` directory is ephemeral on Render free tier** — Attendance photos are uploaded to **Cloudinary** (folder `selfie-attendance`) at clock-in when configured, so they persist across redeploys. Requires env vars `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (set on Render + in `server/.env`). Without them, the server falls back to the local `uploads/` disk (ephemeral — photos lost on redeploy). Temp files are deleted from disk after upload. `photo_url` may be NULL for old records whose files were lost.
+- **Dashboard photo URLs** — `dashboard/src/services/api.js` exports `photoUrl()` which handles both absolute Cloudinary URLs and legacy relative `/uploads/` paths. Use it for any `<img src>` referencing attendance photos; never hardcode `SERVER_URL + url`.
 - **Mobile API URL is hardcoded** — `mobile/src/services/api.js` points to production URL (`https://selfie-api-sqgh.onrender.com/api`). For local dev, change it to `http://localhost:3001/api`.
 - **Expo Go SDK 54** — The user's phone runs Expo Go SDK 54. Don't upgrade the Expo SDK without checking compatibility.
 - **EAS builds use `preview` profile** — This produces an internal-distribution APK, not a store build.
@@ -61,7 +62,7 @@ eas build --platform android --profile preview   # APK build
 
 - **Auth**: JWT-based. Server middleware (`server/src/middleware/auth.js`) protects `/api/users` and `/api/attendance`. Login returns token; dashboard stores in `localStorage`.
 - **Photo processing**: `server/src/utils/imageProcessor.js` uses `sharp` to overlay timestamp + GPS + OSM map tile onto selfies at lower-left corner.
-- **Dashboard API client**: `dashboard/src/services/api.js` — Axios instance with base URL from `REACT_APP_API_URL` env var (defaults to production). Exports `SERVER_URL` for photo URLs.
+- **Dashboard API client**: `dashboard/src/services/api.js` — Axios instance with base URL from `REACT_APP_API_URL` env var (defaults to production). Exports `SERVER_URL` and `photoUrl()` for photo URLs.
 - **Mobile screens**: `LoginScreen` → `HomeScreen` → `CameraScreen` (clock in/out) → `HistoryScreen`. Auth context in `src/context/AuthContext.js`.
 - **Database schema**: `users`, `attendance`, `sessions` tables. Migrations in `server/src/config/migrate.js`.
 

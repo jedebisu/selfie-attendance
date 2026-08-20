@@ -44,7 +44,7 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS attendance (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        photo_url VARCHAR(500) NOT NULL,
+        photo_url VARCHAR(500),
         original_photo_url VARCHAR(500),
         latitude DECIMAL(10, 8),
         longitude DECIMAL(11, 8),
@@ -54,6 +54,20 @@ const createTables = async () => {
         device_info JSONB,
         created_at TIMESTAMP DEFAULT NOW()
       )
+    `);
+
+    // Allow NULL photo_url so old records with lost files can be cleared
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'attendance' AND column_name = 'photo_url'
+            AND is_nullable = 'NO'
+        ) THEN
+          ALTER TABLE attendance ALTER COLUMN photo_url DROP NOT NULL;
+        END IF;
+      END $$;
     `);
 
     // Sessions table for JWT tracking
