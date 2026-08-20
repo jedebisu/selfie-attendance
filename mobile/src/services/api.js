@@ -49,7 +49,7 @@ export const attendanceAPI = {
   },
 
   getTodaySummary: async () => {
-    const response = await api.get('/attendance/summary/today');
+    const response = await api.get('/attendance/summary/me');
     return response.data;
   },
 };

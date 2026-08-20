@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { attendanceAPI } from '../services/api';
 import { addToQueue } from '../services/offlineQueue';
 import { checkConnection } from '../services/network';
-import { cacheTodaySummary } from '../services/cache';
+import { cacheTodaySummary, getCachedTodaySummary } from '../services/cache';
 
 const CameraScreen = ({ navigation, route }) => {
   const { user } = useAuth();
@@ -92,7 +92,11 @@ const CameraScreen = ({ navigation, route }) => {
       const result = await attendanceAPI.submit(formData);
 
       try {
-        await cacheTodaySummary(result.attendance);
+        const cached = await getCachedTodaySummary();
+        const summary = cached && typeof cached === 'object' ? { ...cached } : {};
+        if (status === 'clock_in') summary.clock_in = result.record.timestamp;
+        if (status === 'clock_out') summary.clock_out = result.record.timestamp;
+        await cacheTodaySummary(summary);
       } catch (e) {}
 
       try {
