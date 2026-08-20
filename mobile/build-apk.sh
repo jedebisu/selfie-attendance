@@ -1,68 +1,56 @@
 #!/bin/bash
 
-# Build Optimized APK Script
-# Run this after Java is installed
+# Build Versioned APK Script
+# Usage: ./build-apk.sh v1.1
+# - bumps app version + Android versionCode
+# - builds the release APK
+# - archives it as apk/selfie-attendance-v1.1.apk (previous versions are kept)
 
-echo "🚀 Building Optimized APK for Selfie Attendance"
-echo "================================================"
-echo ""
+set -e
 
-# Set Android SDK
+VERSION="${1:-}"
+if [ -z "$VERSION" ]; then
+    echo "Usage: ./build-apk.sh v1.1"
+    exit 1
+fi
+
+VERSION_NAME="${VERSION/v/}"  # v1.1 -> 1.1
+VERSION_FULL="${VERSION_NAME}.0"  # 1.1 -> 1.1.0
+
+echo "Building version $VERSION (app version $VERSION_FULL)"
+
 export ANDROID_HOME=~/Library/Android/sdk
-export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
-# Set Java Home
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
-export PATH=$JAVA_HOME/bin:$PATH
-
-echo "✅ ANDROID_HOME: $ANDROID_HOME"
-echo "✅ JAVA_HOME: $JAVA_HOME"
-echo ""
-
-# Navigate to mobile directory
 cd "$(dirname "$0")"
 
-# Clean previous builds
-echo "🧹 Cleaning previous builds..."
-cd android
-./gradlew clean
-cd ..
+# Bump version + versionCode in app.json
+node -e "
+const fs = require('fs');
+const p = 'app.json';
+const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+const currentCode = (cfg.expo.android && cfg.expo.android.versionCode) || 1;
+cfg.expo.version = '$VERSION_FULL';
+cfg.expo.android = cfg.expo.android || {};
+cfg.expo.android.versionCode = currentCode + 1;
+fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
+console.log('Bumped to version ' + cfg.expo.version + ' (versionCode ' + cfg.expo.android.versionCode + ')');
+"
 
-echo ""
-echo "🔨 Building release APK..."
-echo "This will take 5-10 minutes..."
-echo ""
+# Regenerate native project so versionCode/versionName take effect
+npx expo prebuild -p android
 
-# Build the release APK
+# Build
 cd android
 ./gradlew assembleRelease
 
-# Check if build succeeded
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "✅ BUILD SUCCESSFUL!"
-    echo "================================================"
-    echo ""
+# Archive
+APK_PATH="app/build/outputs/apk/release/app-release.apk"
+cp "$APK_PATH" "../apk/selfie-attendance-$VERSION.apk"
+cp "$APK_PATH" "../selfie-attendance-latest.apk"
 
-    # Find and show APK location
-    APK_PATH="app/build/outputs/apk/release/app-release.apk"
-    if [ -f "$APK_PATH" ]; then
-        APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
-        echo "📦 APK Location: android/$APK_PATH"
-        echo "📊 APK Size: $APK_SIZE"
-        echo ""
-
-        # Copy to mobile root for easy access
-        cp "$APK_PATH" "../selfie-attendance-optimized.apk"
-        echo "📋 Copied to: mobile/selfie-attendance-optimized.apk"
-        echo ""
-        echo "🎉 Ready to install on devices!"
-    else
-        echo "⚠️  APK file not found at expected location"
-    fi
-else
-    echo ""
-    echo "❌ BUILD FAILED"
-    echo "Check the error messages above"
-    exit 1
-fi
+echo ""
+echo "Build complete:"
+echo "  apk/selfie-attendance-$VERSION.apk"
+echo "  selfie-attendance-latest.apk"
