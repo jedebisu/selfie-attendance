@@ -59,6 +59,7 @@ export const userAPI = {
 export const leaveAPI = {
   getAll: (params) => api.get('/leave', { params }),
   getMonth: (year, month) => api.get('/leave/month', { params: { year, month } }),
+  getMyBalance: () => api.get('/leave/balance/me'),
   create: (data) => api.post('/leave', data),
   update: (id, status) => api.put(`/leave/${id}`, { status }),
   delete: (id) => api.delete(`/leave/${id}`)

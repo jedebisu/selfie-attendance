@@ -7,6 +7,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import CameraScreen from './src/screens/CameraScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import NapMapScreen from './src/screens/NapMapScreen';
+import LeaveApprovalScreen from './src/screens/LeaveApprovalScreen';
 import { ActivityIndicator, View } from 'react-native';
 
 const Stack = createNativeStackNavigator();
@@ -30,6 +31,7 @@ function RootNavigator() {
           <Stack.Screen name="Camera" component={CameraScreen} options={{ headerShown: false }} />
           <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'Attendance History' }} />
           <Stack.Screen name="NapMap" component={NapMapScreen} options={{ title: 'CVN | CVS Naps' }} />
+          <Stack.Screen name="LeaveApproval" component={LeaveApprovalScreen} options={{ title: 'Leave Approvals' }} />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />

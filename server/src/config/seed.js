@@ -11,18 +11,20 @@ const seedData = async () => {
     // Hash PINs before seeding
     const salt = await bcrypt.genSalt(10);
     const users = [
-      { employee_id: 'EMP001', name: 'John Doe', email: 'john@example.com', pin: '123456', is_admin: true },
-      { employee_id: 'EMP002', name: 'Jane Smith', email: 'jane@example.com', pin: '5678', is_admin: false },
-      { employee_id: 'EMP003', name: 'Mike Johnson', email: 'mike@example.com', pin: '9012', is_admin: false },
+      { employee_id: 'EMP001', name: 'John Doe', email: 'john@example.com', pin: '123456', is_admin: true, role: 'employee' },
+      { employee_id: 'EMP002', name: 'Jane Smith', email: 'jane@example.com', pin: '5678', is_admin: false, role: 'employee' },
+      { employee_id: 'EMP003', name: 'Mike Johnson', email: 'mike@example.com', pin: '9012', is_admin: false, role: 'employee' },
+      { employee_id: 'HR001', name: 'HR Department', email: 'hr@example.com', pin: '2222', is_admin: false, role: 'hr' },
+      { employee_id: 'CEO001', name: 'Chief Executive Officer', email: 'ceo@example.com', pin: '1111', is_admin: false, role: 'ceo' },
     ];
 
     for (const user of users) {
       const hashedPin = await bcrypt.hash(user.pin, salt);
       await client.query(
-        `INSERT INTO users (employee_id, name, email, pin, is_admin)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (employee_id) DO UPDATE SET pin = EXCLUDED.pin, is_admin = EXCLUDED.is_admin, is_active = true`,
-        [user.employee_id, user.name, user.email, hashedPin, user.is_admin]
+        `INSERT INTO users (employee_id, name, email, pin, is_admin, role)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (employee_id) DO UPDATE SET pin = EXCLUDED.pin, is_admin = EXCLUDED.is_admin, role = EXCLUDED.role, is_active = true`,
+        [user.employee_id, user.name, user.email, hashedPin, user.is_admin, user.role]
       );
     }
 
@@ -31,6 +33,8 @@ const seedData = async () => {
     console.log('EMP001 / 123456 (Admin)');
     console.log('EMP002 / 5678');
     console.log('EMP003 / 9012');
+    console.log('HR001 / 2222 (HR - files leave requests)');
+    console.log('CEO001 / 1111 (CEO - approves leave requests)');
 
     await client.query('COMMIT');
   } catch (error) {

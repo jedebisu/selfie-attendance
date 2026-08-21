@@ -54,6 +54,18 @@ export const attendanceAPI = {
   },
 };
 
+export const leaveAPI = {
+  getAll: async (params = {}) => {
+    const response = await api.get('/leave', { params });
+    return response.data;
+  },
+
+  update: async (id, status) => {
+    const response = await api.put(`/leave/${id}`, { status });
+    return response.data;
+  },
+};
+
 export const napsAPI = {
   getAll: async (params = {}) => {
     const response = await api.get('/naps', { params });

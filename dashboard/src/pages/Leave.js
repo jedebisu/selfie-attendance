@@ -7,18 +7,28 @@ import { format } from 'date-fns';
 
 const Leave = () => {
   const { user: currentUser } = useAuth();
-  const isAdmin = currentUser?.is_admin;
+  const role = currentUser?.role;
+  const isHR = role === 'hr';
+  const isCEO = role === 'ceo';
+  const canManage = isHR || isCEO;
   const [leaves, setLeaves] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [filters, setFilters] = useState({ status: '', user_id: '' });
-  const [formData, setFormData] = useState({ leave_date: '', reason: '' });
+  const [formData, setFormData] = useState({ start_date: '', end_date: '', reason: '', user_id: '' });
+  const [myBalance, setMyBalance] = useState(null);
 
   useEffect(() => {
     fetchLeaves();
-    if (isAdmin) fetchUsers();
+    if (isHR) fetchUsers();
   }, [filters]);
+
+  useEffect(() => {
+    leaveAPI.getMyBalance()
+      .then(res => setMyBalance(res.data))
+      .catch(() => {});
+  }, []);
 
   const fetchLeaves = async () => {
     setLoading(true);
@@ -47,10 +57,16 @@ const Leave = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await leaveAPI.create(formData);
+      const payload = {
+        start_date: formData.start_date,
+        end_date: formData.end_date || formData.start_date,
+        reason: formData.reason
+      };
+      if (formData.user_id) payload.user_id = formData.user_id;
+      await leaveAPI.create(payload);
       toast.success('Leave request submitted');
       setShowModal(false);
-      setFormData({ leave_date: '', reason: '' });
+      setFormData({ start_date: '', end_date: '', reason: '', user_id: '' });
       fetchLeaves();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to submit');
@@ -106,15 +122,22 @@ const Leave = () => {
       <div className="page-header">
         <div>
           <h1><CalendarDays size={28} style={{ marginRight: 8, verticalAlign: 'middle' }} />Leave Management</h1>
-          <p className="subtitle">Request and manage time off</p>
+          <p className="subtitle">
+            Request and manage time off
+            {myBalance && ` — Your balance: ${myBalance.remaining} of ${myBalance.total} days left`}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={handleExport} className="btn btn-secondary">
-            <Download size={18} /> Export
-          </button>
-          <button onClick={() => setShowModal(true)} className="btn btn-primary">
-            <Plus size={18} /> Request Leave
-          </button>
+          {canManage && (
+            <button onClick={handleExport} className="btn btn-secondary">
+              <Download size={18} /> Export
+            </button>
+          )}
+          {isHR && (
+            <button onClick={() => setShowModal(true)} className="btn btn-primary">
+              <Plus size={18} /> Request Leave
+            </button>
+          )}
         </div>
       </div>
 
@@ -128,7 +151,7 @@ const Leave = () => {
             <option value="rejected">Rejected</option>
           </select>
         </div>
-        {isAdmin && (
+        {canManage && (
           <div className="filter-group">
             <label>Employee:</label>
             <select value={filters.user_id} onChange={(e) => setFilters({ ...filters, user_id: e.target.value })}>
@@ -149,10 +172,11 @@ const Leave = () => {
             <thead>
               <tr>
                 <th>Employee</th>
-                <th>Date</th>
+                <th>Dates</th>
+                <th>Days</th>
                 <th>Reason</th>
                 <th>Status</th>
-                {isAdmin && <th>Actions</th>}
+                {canManage && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -167,13 +191,18 @@ const Leave = () => {
                       </div>
                     </div>
                   </td>
-                  <td>{format(new Date(leave.leave_date), 'MMM dd, yyyy')}</td>
+                  <td>
+                    {leave.days > 1 || leave.end_date !== leave.leave_date
+                      ? `${format(new Date(leave.leave_date), 'MMM dd')} \u2013 ${format(new Date(leave.end_date), 'MMM dd, yyyy')}`
+                      : format(new Date(leave.leave_date), 'MMM dd, yyyy')}
+                  </td>
+                  <td>{leave.days}</td>
                   <td>{leave.reason}</td>
                   <td>{statusBadge(leave.status)}</td>
-                  {isAdmin && (
+                  {canManage && (
                     <td>
                       <div className="action-buttons">
-                        {leave.status === 'pending' && (
+                        {isCEO && leave.status === 'pending' && (
                           <>
                             <button onClick={() => handleApproveReject(leave.id, 'approved')} className="btn btn-icon" title="Approve">
                               <Check size={16} style={{ color: '#22c55e' }} />
@@ -204,13 +233,35 @@ const Leave = () => {
               <button className="modal-close" onClick={() => setShowModal(false)}>&times;</button>
             </div>
             <form onSubmit={handleSubmit}>
+              {isHR && (
+                <div className="form-group">
+                  <label>Employee</label>
+                  <select
+                    value={formData.user_id}
+                    onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
+                    required
+                  >
+                    <option value="">Select employee...</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.employee_id})</option>)}
+                  </select>
+                </div>
+              )}
               <div className="form-group">
-                <label>Date *</label>
+                <label>Start Date *</label>
                 <input
                   type="date"
-                  value={formData.leave_date}
-                  onChange={(e) => setFormData({ ...formData, leave_date: e.target.value })}
+                  value={formData.start_date}
+                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                   required
+                />
+              </div>
+              <div className="form-group">
+                <label>End Date (optional)</label>
+                <input
+                  type="date"
+                  min={formData.start_date || undefined}
+                  value={formData.end_date}
+                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                 />
               </div>
               <div className="form-group">

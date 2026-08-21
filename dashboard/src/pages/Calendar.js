@@ -25,7 +25,7 @@ const SingleCalendar = ({ user, monthDate, onClickDay, leaveDates }) => {
   const presentDays = Object.keys(user.days).filter(d => user.days[d].status === 'present').length;
   const leaveDays = allDays.filter(d => {
     const dateKey = format(d, 'yyyy-MM-dd');
-    return leaveDates.has(dateKey) && d >= monthStart && d <= monthEnd && !isWeekend(d);
+    return leaveDates.has(dateKey) && d >= monthStart && d <= monthEnd;
   }).length;
   const totalWorkdays = allDays.filter(d =>
     !isWeekend(d) && d >= monthStart && d <= monthEnd && !isFuture(d)
