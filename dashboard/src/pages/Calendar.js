@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { attendanceAPI, leaveAPI } from '../services/api';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -110,8 +110,14 @@ const Calendar = () => {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth() + 1;
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const inFlight = useRef(false);
+
+  // silent=true for background polling/manual refresh (no loading flash);
+  // silent=false shows the full loading state on first load / month change.
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
+    if (silent && inFlight.current) return;
+    inFlight.current = true;
+    if (!silent) setLoading(true);
     try {
       const [attendRes, leaveRes] = await Promise.all([
         attendanceAPI.getMonthlySummary(year, month),
@@ -125,14 +131,22 @@ const Calendar = () => {
       });
       setLeaveDates(dates);
     } catch (error) {
-      console.error('Error fetching calendar data:', error);
-      toast.error('Failed to load calendar data');
+      if (!silent) {
+        console.error('Error fetching calendar data:', error);
+        toast.error('Failed to load calendar data');
+      }
     } finally {
-      setLoading(false);
+      inFlight.current = false;
+      if (!silent) setLoading(false);
     }
   }, [year, month]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => fetchData({ silent: true }), 5000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   const navigateMonth = (dir) => {
     setCurrentDate(dir === 1 ? addMonths(currentDate, 1) : subMonths(currentDate, 1));
@@ -153,7 +167,7 @@ const Calendar = () => {
           <p className="subtitle">Per-employee monthly attendance view</p>
         </div>
         <div className="calendar-nav">
-          <button className="btn btn-icon" onClick={fetchData} title="Refresh"><RefreshCw size={18} /></button>
+          <button className="btn btn-icon" onClick={() => fetchData({ silent: true })} title="Refresh"><RefreshCw size={18} /></button>
           <button className="btn btn-icon" onClick={() => navigateMonth(-1)}><ChevronLeft size={24} /></button>
           <span className="calendar-month-label">{format(currentDate, 'MMMM yyyy')}</span>
           <button className="btn btn-icon" onClick={() => navigateMonth(1)}><ChevronRight size={24} /></button>
