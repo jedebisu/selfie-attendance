@@ -208,7 +208,7 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
         a.photo_url,
         a.latitude,
         a.longitude,
-        DATE(a.timestamp + INTERVAL '8 hours') as attendance_date
+        TO_CHAR(a.timestamp + INTERVAL '8 hours', 'YYYY-MM-DD') as attendance_date
        FROM users u
        LEFT JOIN attendance a ON u.id = a.user_id 
          AND DATE(a.timestamp + INTERVAL '8 hours') >= $1::date
