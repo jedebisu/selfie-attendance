@@ -163,6 +163,15 @@ const HomeScreen = memo(({ navigation }) => {
       >
         <Text style={[styles.historyButtonText, { color: '#fff' }]}>CVN | CVS Naps</Text>
       </TouchableOpacity>
+
+      {user?.role === 'ceo' && (
+        <TouchableOpacity
+          style={[styles.historyButton, { backgroundColor: '#22c55e', marginTop: 12 }]}
+          onPress={() => navigation.navigate('LeaveApproval')}
+        >
+          <Text style={[styles.historyButtonText, { color: '#fff' }]}>Leave Approvals</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 });

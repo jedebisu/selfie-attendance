@@ -77,7 +77,8 @@ router.post('/login', loginLimiter, async (req, res) => {
         id: user.id,
         employee_id: user.employee_id,
         name: user.name,
-        is_admin: user.is_admin
+        is_admin: user.is_admin,
+        role: user.role
       },
       token
     });
@@ -99,7 +100,7 @@ router.get('/verify', async (req, res) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
     const result = await pool.query(
-      'SELECT id, employee_id, name, is_admin FROM users WHERE id = $1',
+      'SELECT id, employee_id, name, is_admin, role FROM users WHERE id = $1',
       [decoded.userId]
     );
 

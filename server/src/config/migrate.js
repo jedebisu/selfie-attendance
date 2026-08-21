@@ -108,6 +108,27 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_leave_date ON leave_requests(leave_date);
     `);
 
+    // Multi-day leaves: end_date (nullable = same day as leave_date)
+    await client.query(`
+      ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS end_date DATE;
+    `);
+    await client.query(`
+      UPDATE leave_requests SET end_date = leave_date WHERE end_date IS NULL;
+    `);
+
+    // Leave balance per user (in days)
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS leave_balance INTEGER DEFAULT 4;
+    `);
+    await client.query(`
+      ALTER TABLE users ALTER COLUMN leave_balance SET DEFAULT 4;
+    `);
+
+    // Role: employee | hr | ceo (is_admin stays for general admin features)
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'employee';
+    `);
+
     // NAP Deployments table
     await client.query(`
       CREATE TABLE IF NOT EXISTS naps (
