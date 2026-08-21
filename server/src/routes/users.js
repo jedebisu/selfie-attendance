@@ -4,11 +4,13 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
+const VALID_ROLES = ['employee', 'admin', 'hr', 'ceo'];
+
 // Get all users
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, employee_id, name, email, is_active, is_admin, created_at FROM users ORDER BY name'
+      'SELECT id, employee_id, name, email, is_active, is_admin, role, created_at FROM users ORDER BY name'
     );
     res.json(result.rows);
   } catch (error) {
@@ -22,7 +24,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      'SELECT id, employee_id, name, email, is_active, is_admin, created_at FROM users WHERE id = $1',
+      'SELECT id, employee_id, name, email, is_active, is_admin, role, created_at FROM users WHERE id = $1',
       [id]
     );
 
@@ -40,10 +42,15 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create user (admin only)
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { employee_id, name, email, pin, is_admin } = req.body;
+    const { employee_id, name, email, pin, role } = req.body;
 
     if (!employee_id || !name || !pin) {
       return res.status(400).json({ error: 'Employee ID, name, and PIN are required' });
+    }
+
+    const userRole = role || 'employee';
+    if (!VALID_ROLES.includes(userRole)) {
+      return res.status(400).json({ error: 'Invalid role' });
     }
 
     // Hash PIN
@@ -51,10 +58,10 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     const hashedPin = await bcrypt.hash(pin, salt);
 
     const result = await pool.query(
-      `INSERT INTO users (employee_id, name, email, pin, is_admin)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, employee_id, name, email, is_admin, created_at`,
-      [employee_id, name, email || null, hashedPin, is_admin || false]
+      `INSERT INTO users (employee_id, name, email, pin, is_admin, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, employee_id, name, email, is_admin, role, created_at`,
+      [employee_id, name, email || null, hashedPin, userRole === 'admin', userRole]
     );
 
     res.status(201).json({
@@ -74,7 +81,11 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, pin, is_active, is_admin } = req.body;
+    const { name, email, pin, is_active, role } = req.body;
+
+    if (role !== undefined && !VALID_ROLES.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
 
     // Hash PIN if provided
     let hashedPin = null;
@@ -84,16 +95,18 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
     }
 
     const result = await pool.query(
-      `UPDATE users 
+      `UPDATE users
        SET name = COALESCE($1, name),
            email = COALESCE($2, email),
            pin = COALESCE($3, pin),
            is_active = COALESCE($4, is_active),
-           is_admin = COALESCE($5, is_admin),
+           role = COALESCE($5, role),
+           is_admin = COALESCE($6, is_admin),
            updated_at = NOW()
-       WHERE id = $6
-       RETURNING id, employee_id, name, email, is_active, is_admin, updated_at`,
-      [name, email, hashedPin, is_active, is_admin, id]
+       WHERE id = $7
+       RETURNING id, employee_id, name, email, is_active, is_admin, role, updated_at`,
+      [name, email, hashedPin, is_active, role || null,
+       role !== undefined ? role === 'admin' : null, id]
     );
 
     if (result.rows.length === 0) {

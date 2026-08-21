@@ -206,7 +206,11 @@ body {
   display: inline-block; padding: 4px 10px; border-radius: 20px;
   font-size: 12px; font-weight: 600;
 }
-.badge-green { background: #ecfdf5; color: #166534; }
+  .badge-green { background: #ecfdf5; color: #166534; }
+
+  .badge-purple { background: #f3e8ff; color: #6b21a8; }
+
+  .badge-blue { background: #dbeafe; color: #1e40af; }
 .badge-orange { background: #fffbeb; color: #92400e; }
 .badge-gray { background: var(--bg); color: var(--text-secondary); }
 .badge-gold { background: #fef3c7; color: #92400e; display: inline-flex; align-items: center; gap: 4px; }
