@@ -15,8 +15,22 @@ const Users = () => {
     name: '',
     email: '',
     pin: '',
-    is_admin: false
+    role: 'employee'
   });
+
+  const ROLES = [
+    { value: 'employee', label: 'Employee' },
+    { value: 'admin', label: 'Admin' },
+    { value: 'hr', label: 'HR' },
+    { value: 'ceo', label: 'CEO' }
+  ];
+
+  const ROLE_BADGES = {
+    admin: { className: 'badge badge-gold', label: 'Admin', icon: true },
+    hr: { className: 'badge badge-purple', label: 'HR', icon: false },
+    ceo: { className: 'badge badge-blue', label: 'CEO', icon: false },
+    employee: { className: 'badge badge-gray', label: 'Employee', icon: false }
+  };
 
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetUser, setResetUser] = useState(null);
@@ -64,7 +78,7 @@ const Users = () => {
       
       setShowModal(false);
       setEditingUser(null);
-      setFormData({ employee_id: '', name: '', email: '', pin: '', is_admin: false });
+      setFormData({ employee_id: '', name: '', email: '', pin: '', role: 'employee' });
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Operation failed');
@@ -78,7 +92,7 @@ const Users = () => {
       name: user.name,
       email: user.email || '',
       pin: '',
-      is_admin: user.is_admin || false
+      role: user.role || (user.is_admin ? 'admin' : 'employee')
     });
     setShowModal(true);
   };
@@ -99,7 +113,7 @@ const Users = () => {
 
   const openAddModal = () => {
     setEditingUser(null);
-    setFormData({ employee_id: '', name: '', email: '', pin: '', is_admin: false });
+    setFormData({ employee_id: '', name: '', email: '', pin: '', role: 'employee' });
     setShowModal(true);
   };
 
@@ -164,13 +178,14 @@ const Users = () => {
                 <td>{user.employee_id}</td>
                 <td>{user.email || '-'}</td>
                 <td>
-                  {user.is_admin ? (
-                    <span className="badge badge-gold">
-                      <Shield size={12} /> Admin
-                    </span>
-                  ) : (
-                    <span className="badge badge-gray">User</span>
-                  )}
+                  {(() => {
+                    const r = ROLE_BADGES[user.role || (user.is_admin ? 'admin' : 'employee')];
+                    return (
+                      <span className={r.className}>
+                        {r.icon && <Shield size={12} />} {r.label}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td>
                   <span className={`badge ${user.is_active ? 'badge-green' : 'badge-gray'}`}>
@@ -251,15 +266,16 @@ const Users = () => {
                 />
               </div>
               <div className="form-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    name="is_admin"
-                    checked={formData.is_admin}
-                    onChange={handleInputChange}
-                  />
-                  Admin privileges
-                </label>
+                <label>Role</label>
+                <select
+                  name="role"
+                  value={formData.role}
+                  onChange={handleInputChange}
+                >
+                  {ROLES.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>

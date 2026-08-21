@@ -11,7 +11,7 @@ const seedData = async () => {
     // Hash PINs before seeding
     const salt = await bcrypt.genSalt(10);
     const users = [
-      { employee_id: 'EMP001', name: 'John Doe', email: 'john@example.com', pin: '123456', is_admin: true, role: 'employee' },
+      { employee_id: 'EMP001', name: 'John Doe', email: 'john@example.com', pin: '123456', is_admin: true, role: 'admin' },
       { employee_id: 'EMP002', name: 'Jane Smith', email: 'jane@example.com', pin: '5678', is_admin: false, role: 'employee' },
       { employee_id: 'EMP003', name: 'Mike Johnson', email: 'mike@example.com', pin: '9012', is_admin: false, role: 'employee' },
       { employee_id: 'HR001', name: 'HR Department', email: 'hr@example.com', pin: '2222', is_admin: false, role: 'hr' },
