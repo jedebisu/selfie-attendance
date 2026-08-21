@@ -34,6 +34,7 @@ const NapMapScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const mapRef = useRef(null);
+  const searchSeqRef = useRef(0);
 
   useEffect(() => {
     getCurrentLocation();
@@ -82,19 +83,24 @@ const NapMapScreen = ({ navigation }) => {
   const debouncedSearch = useCallback(
     debounce(async (query) => {
       if (query.trim().length < 2) {
+        searchSeqRef.current++;
         setSearchResults([]);
         setIsSearching(false);
         return;
       }
 
+      const seq = ++searchSeqRef.current;
       try {
         setSearching(true);
         const response = await napsAPI.search({ q: query, limit: 100 });
+        if (seq !== searchSeqRef.current) return;
         setSearchResults(response.naps || []);
       } catch (error) {
         console.error('Error searching NAPs:', error);
       } finally {
-        setSearching(false);
+        if (seq === searchSeqRef.current) {
+          setSearching(false);
+        }
       }
     }, 300),
     []
@@ -107,6 +113,7 @@ const NapMapScreen = ({ navigation }) => {
   };
 
   const clearSearch = () => {
+    searchSeqRef.current++;
     setSearchQuery('');
     setSearchResults([]);
     setIsSearching(false);

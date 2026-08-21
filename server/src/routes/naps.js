@@ -161,6 +161,8 @@ router.get('/stats/summary', async (req, res) => {
 });
 
 // Search NAPs by ID, building, city, etc.
+// NAP ID matches always take priority; other fields are only used as a
+// fallback when no nap_id matches, so ID searches never return unrelated NAPs.
 router.get('/search', async (req, res) => {
   try {
     const { q, limit = 100 } = req.query;
@@ -172,7 +174,8 @@ router.get('/search', async (req, res) => {
     const searchTrimmed = q.trim();
     const searchTerm = `%${searchTrimmed}%`;
 
-    const result = await pool.query(`
+    // Pass 1: match on nap_id only (exact > prefix > contains)
+    const idResult = await pool.query(`
       SELECT
         id, nap_id, cabinet, location_type, building_served, floors_served,
         working_lines, vacant_lines, total_capacity, cfs_region,
@@ -186,23 +189,48 @@ router.get('/search', async (req, res) => {
         CASE
           WHEN UPPER(nap_id) = UPPER($1) THEN 0
           WHEN UPPER(nap_id) LIKE UPPER($2) THEN 1
-          WHEN UPPER(nap_id) LIKE UPPER($3) THEN 2
-          ELSE 3
+          ELSE 2
         END as relevance
       FROM naps
-      WHERE (
-        UPPER(nap_id) LIKE UPPER($3)
-        OR UPPER(building_served) LIKE UPPER($3)
-        OR UPPER(city_name) LIKE UPPER($3)
-        OR UPPER(province_name) LIKE UPPER($3)
-        OR UPPER(barangay_name) LIKE UPPER($3)
-        OR UPPER(cabinet) LIKE UPPER($3)
-      )
-      AND dp_nap_lat BETWEEN 4 AND 21
-      AND dp_nap_long BETWEEN 116 AND 127
+      WHERE UPPER(nap_id) LIKE UPPER($3)
+        AND dp_nap_lat BETWEEN 4 AND 21
+        AND dp_nap_long BETWEEN 116 AND 127
       ORDER BY relevance, nap_id
       LIMIT $4
     `, [searchTrimmed, `${searchTrimmed}%`, searchTerm, limit]);
+
+    if (idResult.rows.length > 0) {
+      return res.json({
+        count: idResult.rows.length,
+        naps: idResult.rows
+      });
+    }
+
+    // Pass 2 (fallback): no nap_id matched — search building, city, etc.
+    const result = await pool.query(`
+      SELECT
+        id, nap_id, cabinet, location_type, building_served, floors_served,
+        working_lines, vacant_lines, total_capacity, cfs_region,
+        city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
+        naps_status, olt_id, sell_status,
+        CASE
+          WHEN vacant_lines = 0 THEN 'red'
+          WHEN vacant_lines <= 8 THEN 'yellow'
+          ELSE 'green'
+        END as marker_color
+      FROM naps
+      WHERE (
+        UPPER(building_served) LIKE UPPER($1)
+        OR UPPER(city_name) LIKE UPPER($1)
+        OR UPPER(province_name) LIKE UPPER($1)
+        OR UPPER(barangay_name) LIKE UPPER($1)
+        OR UPPER(cabinet) LIKE UPPER($1)
+      )
+      AND dp_nap_lat BETWEEN 4 AND 21
+      AND dp_nap_long BETWEEN 116 AND 127
+      ORDER BY nap_id
+      LIMIT $2
+    `, [searchTerm, limit]);
 
     res.json({
       count: result.rows.length,
