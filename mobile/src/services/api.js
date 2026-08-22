@@ -52,6 +52,11 @@ export const attendanceAPI = {
     const response = await api.get('/attendance/summary/me');
     return response.data;
   },
+
+  getMyCalendar: async (year, month) => {
+    const response = await api.get('/attendance/calendar/me', { params: { year, month } });
+    return response.data;
+  },
 };
 
 export const locationAPI = {

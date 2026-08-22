@@ -123,12 +123,12 @@ export const startLocationTracking = async () => {
       timeInterval: 120000,
       pausesUpdatesAutomatically: false,
       foregroundService: {
-        notificationTitle: 'EBISU T&A tracking active',
-        notificationBody: 'Your location is recorded while you are clocked in.',
+        notificationTitle: 'EBISU T&A',
+        notificationBody: 'Attendance sync active',
         notificationColor: '#007AFF',
         killServiceOnDestroy: false,
       },
-      showsBackgroundLocationIndicator: true,
+      showsBackgroundLocationIndicator: false,
     });
 
     await setDiag({ lastStartAt: new Date().toISOString(), lastStartError: null });

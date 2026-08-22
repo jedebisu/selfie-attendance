@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { attendanceAPI } from '../services/api';
@@ -7,7 +7,7 @@ import { getCachedTodaySummary, cacheTodaySummary } from '../services/cache';
 import { checkConnection } from '../services/network';
 import { getQueueLength } from '../services/offlineQueue';
 import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notifications';
-import { syncTrackingWithShiftState, getTrackingDiagnostics, flushPings } from '../services/locationTracker';
+import { syncTrackingWithShiftState } from '../services/locationTracker';
 
 const HomeScreen = memo(({ navigation }) => {
   const { user, logout } = useAuth();
@@ -72,26 +72,6 @@ const HomeScreen = memo(({ navigation }) => {
 
   const handleLogout = () => {
     logout();
-  };
-
-  const showTrackingStatus = async () => {
-    try {
-      const d = await getTrackingDiagnostics();
-      flushPings().catch(() => {});
-      Alert.alert(
-        'Tracking Status',
-        [
-          `Background permission: ${d.backgroundPermission}`,
-          `Tracker running: ${d.trackingStarted ? 'YES' : 'NO'}`,
-          `Pings waiting to upload: ${d.queuedPings}`,
-          `Last upload: ${d.lastFlushAt ? new Date(d.lastFlushAt).toLocaleTimeString() : 'never'}${d.lastUploaded != null ? ` (${d.lastUploaded} stored)` : ''}`,
-          d.lastFlushError ? `Upload error: ${d.lastFlushError}` : '',
-          d.lastStartError ? `Start error: ${d.lastStartError}` : '',
-        ].filter(Boolean).join('\n')
-      );
-    } catch (e) {
-      Alert.alert('Tracking Status Error', String(e?.message || e));
-    }
   };
 
   return (
@@ -179,7 +159,7 @@ const HomeScreen = memo(({ navigation }) => {
       </View>
 
       <TouchableOpacity style={styles.historyButton} onPress={() => navigation.navigate('History')}>
-        <Text style={styles.historyButtonText}>View History</Text>
+        <Text style={styles.historyButtonText}>My Attendance</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -187,13 +167,6 @@ const HomeScreen = memo(({ navigation }) => {
         onPress={() => navigation.navigate('NapMap')}
       >
         <Text style={[styles.historyButtonText, { color: '#fff' }]}>CVN | CVS Naps</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.historyButton, { marginTop: 12 }]}
-        onPress={showTrackingStatus}
-      >
-        <Text style={styles.historyButtonText}>GPS Tracking Status</Text>
       </TouchableOpacity>
 
       {user?.role === 'ceo' && (

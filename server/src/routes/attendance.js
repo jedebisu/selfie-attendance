@@ -158,6 +158,37 @@ router.get('/summary/me', authenticateToken, async (req, res) => {
   }
 });
 
+// Get current user's own monthly attendance rows (for mobile personal calendar)
+router.get('/calendar/me', authenticateToken, async (req, res) => {
+  try {
+    const nowPh = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const year = parseInt(req.query.year) || nowPh.getFullYear();
+    const month = parseInt(req.query.month) || nowPh.getMonth() + 1;
+    if (!(month >= 1 && month <= 12) || !(year >= 2000 && year <= 2100)) {
+      return res.status(400).json({ error: 'Invalid year or month' });
+    }
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    const result = await pool.query(
+      `SELECT id, status, timestamp
+       FROM attendance
+       WHERE user_id = $1
+         AND DATE(timestamp + INTERVAL '8 hours') >= $2::date
+         AND DATE(timestamp + INTERVAL '8 hours') < $3::date
+       ORDER BY timestamp ASC`,
+      [req.user.id, startDate, endDate]
+    );
+
+    res.json({ year, month, records: result.rows });
+  } catch (error) {
+    console.error('Error fetching my calendar:', error);
+    res.status(500).json({ error: 'Failed to fetch calendar' });
+  }
+});
+
 // Get today's attendance summary (MUST be before /:id to avoid route conflict)
 router.get('/summary/today', authenticateToken, async (req, res) => {
   try {
