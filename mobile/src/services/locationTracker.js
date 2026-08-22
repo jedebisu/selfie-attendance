@@ -86,8 +86,7 @@ export const startLocationTracking = async () => {
 
     await Location.startLocationUpdatesAsync(TRACKING_TASK, {
       accuracy: Location.Accuracy.Balanced,
-      distanceInterval: 50,
-      deferredUpdatesInterval: 120000,
+      timeInterval: 120000,
       pausesUpdatesAutomatically: false,
       foregroundService: {
         notificationTitle: 'EBISU T&A tracking active',

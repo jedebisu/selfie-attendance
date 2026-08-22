@@ -95,6 +95,8 @@ const LiveMap = () => {
     .map((p) => [parseFloat(p.latitude), parseFloat(p.longitude)])
     .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
 
+  const noSignalUsers = users.filter((u) => !positionOf(u));
+
   return (
     <div className="map-page">
       <div className="page-header">
@@ -193,6 +195,19 @@ const LiveMap = () => {
             <div className="map-stats" style={{ paddingTop: 8 }}>
               <span>Marker colors: green = seen &lt; 6 min ago, orange = &lt; 16 min, red = stale, grey = no GPS yet</span>
             </div>
+            {noSignalUsers.length > 0 && (
+              <div
+                style={{
+                  padding: '10px 16px',
+                  borderTop: '1px solid #e5e7eb',
+                  fontSize: 13,
+                  color: '#6b7280',
+                }}
+              >
+                <strong>No GPS signal yet ({noSignalUsers.length}):</strong>{' '}
+                {noSignalUsers.map((u) => `${u.name} (${u.employee_id})`).join(', ')}
+              </div>
+            )}
           </>
         )}
       </div>
