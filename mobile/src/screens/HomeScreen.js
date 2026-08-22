@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { attendanceAPI } from '../services/api';
@@ -75,19 +75,23 @@ const HomeScreen = memo(({ navigation }) => {
   };
 
   const showTrackingStatus = async () => {
-    const d = await getTrackingDiagnostics();
-    flushPings().catch(() => {});
-    Alert.alert(
-      'Tracking Status',
-      [
-        `Background permission: ${d.backgroundPermission}`,
-        `Tracker running: ${d.trackingStarted ? 'YES' : 'NO'}`,
-        `Pings waiting to upload: ${d.queuedPings}`,
-        `Last upload: ${d.lastFlushAt ? new Date(d.lastFlushAt).toLocaleTimeString() : 'never'}${d.lastUploaded != null ? ` (${d.lastUploaded} stored)` : ''}`,
-        d.lastFlushError ? `Upload error: ${d.lastFlushError}` : '',
-        d.lastStartError ? `Start error: ${d.lastStartError}` : '',
-      ].filter(Boolean).join('\n')
-    );
+    try {
+      const d = await getTrackingDiagnostics();
+      flushPings().catch(() => {});
+      Alert.alert(
+        'Tracking Status',
+        [
+          `Background permission: ${d.backgroundPermission}`,
+          `Tracker running: ${d.trackingStarted ? 'YES' : 'NO'}`,
+          `Pings waiting to upload: ${d.queuedPings}`,
+          `Last upload: ${d.lastFlushAt ? new Date(d.lastFlushAt).toLocaleTimeString() : 'never'}${d.lastUploaded != null ? ` (${d.lastUploaded} stored)` : ''}`,
+          d.lastFlushError ? `Upload error: ${d.lastFlushError}` : '',
+          d.lastStartError ? `Start error: ${d.lastStartError}` : '',
+        ].filter(Boolean).join('\n')
+      );
+    } catch (e) {
+      Alert.alert('Tracking Status Error', String(e?.message || e));
+    }
   };
 
   return (

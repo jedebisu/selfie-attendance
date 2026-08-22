@@ -47,7 +47,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM"
       ],
-      "versionCode": 7
+      "versionCode": 8
     },
     "extra": {
       "eas": {
