@@ -8,6 +8,7 @@ import CameraScreen from './src/screens/CameraScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import NapMapScreen from './src/screens/NapMapScreen';
 import LeaveApprovalScreen from './src/screens/LeaveApprovalScreen';
+import './src/services/locationTracker';
 import { ActivityIndicator, View } from 'react-native';
 
 const Stack = createNativeStackNavigator();

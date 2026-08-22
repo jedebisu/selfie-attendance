@@ -77,3 +77,8 @@ export const analyticsAPI = {
   getClockInDistribution: (params) => api.get('/analytics/clock-in-distribution', { params }),
   getDayOfWeek: (params) => api.get('/analytics/day-of-week', { params })
 };
+
+export const locationAPI = {
+  getLive: () => api.get('/location/live'),
+  getTrail: (userId, date) => api.get(`/location/trail/${userId}`, { params: { date } })
+};

@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, useCallback } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { attendanceAPI } from '../services/api';
 import { syncOnStartup, startSyncOnConnect } from '../services/syncService';
+import { stopLocationTracking, flushPings } from '../services/locationTracker';
 
 const AuthContext = createContext(null);
 
@@ -60,6 +61,8 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      await flushPings().catch(() => {});
+      await stopLocationTracking();
       if (token) {
         await attendanceAPI.logout();
       }

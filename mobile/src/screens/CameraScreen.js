@@ -8,6 +8,7 @@ import { attendanceAPI } from '../services/api';
 import { addToQueue } from '../services/offlineQueue';
 import { checkConnection } from '../services/network';
 import { cacheTodaySummary, getCachedTodaySummary } from '../services/cache';
+import { startLocationTracking, stopLocationTracking } from '../services/locationTracker';
 
 const CameraScreen = ({ navigation, route }) => {
   const { user } = useAuth();
@@ -66,6 +67,12 @@ const CameraScreen = ({ navigation, route }) => {
           photoPath: localPath,
         });
 
+        if (status === 'clock_in') {
+          startLocationTracking();
+        } else {
+          stopLocationTracking();
+        }
+
         Alert.alert(
           'Saved Offline',
           `Your ${status === 'clock_in' ? 'clock-in' : 'clock-out'} has been saved. It will sync when you're back online.`,
@@ -103,6 +110,12 @@ const CameraScreen = ({ navigation, route }) => {
         await FileSystem.deleteAsync(localPath, { idempotent: true });
       } catch (e) {}
 
+      if (status === 'clock_in') {
+        startLocationTracking();
+      } else {
+        stopLocationTracking();
+      }
+
       Alert.alert(
         'Success!',
         `Successfully ${status === 'clock_in' ? 'clocked in' : 'clocked out'}`,
@@ -135,6 +148,12 @@ const CameraScreen = ({ navigation, route }) => {
           longitude: location?.longitude,
           photoPath: localPath,
         });
+
+        if (status === 'clock_in') {
+          startLocationTracking();
+        } else {
+          stopLocationTracking();
+        }
 
         Alert.alert(
           'Saved Offline',

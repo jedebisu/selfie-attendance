@@ -54,6 +54,13 @@ export const attendanceAPI = {
   },
 };
 
+export const locationAPI = {
+  sendPings: async (pings) => {
+    const response = await api.post('/location/pings', { pings });
+    return response.data;
+  },
+};
+
 export const leaveAPI = {
   getAll: async (params = {}) => {
     const response = await api.get('/leave', { params });
