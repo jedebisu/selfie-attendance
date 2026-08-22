@@ -56,6 +56,8 @@ eas build --platform android --profile preview   # APK build
 - **Mobile API URL is hardcoded** — `mobile/src/services/api.js` points to production URL (`https://selfie-api-sqgh.onrender.com/api`). For local dev, change it to `http://localhost:3001/api`.
 - **Expo Go SDK 54** — The user's phone runs Expo Go SDK 54. Don't upgrade the Expo SDK without checking compatibility.
 - **EAS builds use `preview` profile** — This produces an internal-distribution APK, not a store build.
+- **APK distribution via GitHub Releases, not EAS** — EAS free-tier quota is limited; local Gradle builds (`mobile/android`, JDK17 + Android SDK installed) are the default. Publish with `cd mobile && bash publish-apk.sh` — it creates an immutable release tagged `app-v<versionCode>` per build (rollback history) and refreshes the fixed-name asset so employees always install from `https://github.com/jedebisu/selfie-attendance/releases/latest/download/EBISU-TA.apk`. Never overwrite a single release asset with new builds — that destroys rollback points (user requirement).
+- **Bump `versionCode` in `mobile/app.json` (+ regenerate `android/app/build.gradle` via prebuild or matching sed) before every release build** — Android requires an increasing versionCode for update-over-install.
 - **Server CORS is wide open** — `origin: true` allows all origins. Fine for this project but not for production with sensitive data.
 
 ## Architecture Notes
