@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
 import Users from './pages/Users';
 import MapView from './pages/MapView';
+import LiveMap from './pages/LiveMap';
 import Calendar from './pages/Calendar';
 import Leave from './pages/Leave';
 import Analytics from './pages/Analytics';
@@ -42,6 +43,7 @@ function App() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="users" element={<Users />} />
             <Route path="map" element={<MapView />} />
+            <Route path="live" element={<LiveMap />} />
           </Route>
         </Routes>
       </Router>

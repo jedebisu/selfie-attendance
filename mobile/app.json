@@ -20,7 +20,9 @@
       "bundleIdentifier": "com.jedebisu.selfieattendance",
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access to take attendance photos",
-        "NSLocationWhenInUseUsageDescription": "We need your location to record attendance"
+        "NSLocationWhenInUseUsageDescription": "We need your location to record your attendance clock in and out",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Your location is tracked in the background only while you are clocked in, so the office can verify work locations",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
@@ -38,7 +40,10 @@
       },
       "permissions": [
         "CAMERA",
+        "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM"
       ],

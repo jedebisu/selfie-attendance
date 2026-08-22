@@ -7,6 +7,7 @@ import { getCachedTodaySummary, cacheTodaySummary } from '../services/cache';
 import { checkConnection } from '../services/network';
 import { getQueueLength } from '../services/offlineQueue';
 import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notifications';
+import { syncTrackingWithShiftState } from '../services/locationTracker';
 
 const HomeScreen = memo(({ navigation }) => {
   const { user, logout } = useAuth();
@@ -31,6 +32,10 @@ const HomeScreen = memo(({ navigation }) => {
 
       const queueLen = await getQueueLength();
       setPendingCount(queueLen);
+
+      if (summary) {
+        syncTrackingWithShiftState(Boolean(summary.clock_in) && !summary.clock_out);
+      }
     } catch (error) {
       const cached = await getCachedTodaySummary();
       if (cached) setTodaySummary(cached);

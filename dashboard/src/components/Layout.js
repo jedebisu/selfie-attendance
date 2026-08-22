@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, Users, MapPin, Clock, LogOut, CalendarDays, CalendarOff, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Users, MapPin, Clock, LogOut, CalendarDays, CalendarOff, BarChart3, Radar } from 'lucide-react';
 
 const Layout = () => {
   const { user, logout } = useAuth();
@@ -20,6 +20,7 @@ const Layout = () => {
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/users', icon: Users, label: 'Users', adminOnly: true },
     { to: '/map', icon: MapPin, label: 'Map View' },
+    { to: '/live', icon: Radar, label: 'Live Tracking', adminOnly: true },
   ];
 
   const navItems = allNavItems.filter(item => !item.adminOnly || user?.is_admin);

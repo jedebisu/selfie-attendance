@@ -169,6 +169,27 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_naps_status ON naps(naps_status);
     `);
 
+    // Location pings table (GPS tracking while clocked in)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS location_pings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        attendance_id INTEGER REFERENCES attendance(id) ON DELETE CASCADE,
+        latitude DECIMAL(10, 8) NOT NULL,
+        longitude DECIMAL(11, 8) NOT NULL,
+        accuracy_m REAL,
+        speed_mps REAL,
+        battery_pct SMALLINT,
+        pinged_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_pings_user_time ON location_pings(user_id, pinged_at);
+      CREATE INDEX IF NOT EXISTS idx_pings_shift ON location_pings(attendance_id);
+    `);
+
     await client.query('COMMIT');
     console.log('Database tables created successfully!');
   } catch (error) {

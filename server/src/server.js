@@ -11,6 +11,7 @@ const leaveRoutes = require('./routes/leave');
 const exportRoutes = require('./routes/export');
 const analyticsRoutes = require('./routes/analytics');
 const napsRoutes = require('./routes/naps');
+const locationRoutes = require('./routes/location');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,6 +35,7 @@ app.use('/api/leave', leaveRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/naps', napsRoutes);
+app.use('/api/location', locationRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
