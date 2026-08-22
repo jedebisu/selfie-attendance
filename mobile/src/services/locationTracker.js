@@ -1,12 +1,21 @@
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { locationAPI } from './api';
 
 const TRACKING_TASK = 'selfie-attendance-location-tracking';
 const PINGS_QUEUE_KEY = 'location_pings_queue';
+const TRACKING_DIAG_KEY = 'location_tracking_diagnostics';
 const MAX_QUEUE_SIZE = 1000;
 const BATCH_SIZE = 200;
+
+const setDiag = async (patch) => {
+  try {
+    const current = JSON.parse((await AsyncStorage.getItem(TRACKING_DIAG_KEY)) || '{}');
+    await AsyncStorage.setItem(TRACKING_DIAG_KEY, JSON.stringify({ ...current, ...patch }));
+  } catch (e) {}
+};
 
 TaskManager.defineTask(TRACKING_TASK, async ({ data, error }) => {
   if (error) return;
@@ -52,7 +61,23 @@ export const flushPings = async () => {
   }
 
   const batch = queue.slice(0, BATCH_SIZE);
-  const response = await locationAPI.sendPings(batch);
+  let response;
+  try {
+    response = await locationAPI.sendPings(batch);
+  } catch (error) {
+    await setDiag({
+      lastFlushAt: new Date().toISOString(),
+      lastFlushError: error.response?.data?.error || error.message,
+      lastFlushStatus: error.response?.status || null,
+    });
+    throw error;
+  }
+
+  await setDiag({
+    lastFlushAt: new Date().toISOString(),
+    lastFlushError: null,
+    lastUploaded: response?.stored ?? 0,
+  });
 
   if (response && response.reason === 'not_clocked_in') {
     await writeQueue(queue.slice(batch.length));
@@ -75,6 +100,15 @@ export const startLocationTracking = async () => {
 
     const background = await Location.requestBackgroundPermissionsAsync();
     if (background.status !== 'granted') {
+      await setDiag({
+        lastStartAt: new Date().toISOString(),
+        lastStartError: 'background_permission_denied',
+      });
+      Alert.alert(
+        'Location Permission Needed',
+        'To track your work location while clocked in, set location permission to "Allow all the time".\n\nSettings > Apps > EBISU T&A > Permissions > Location',
+        [{ text: 'Open Settings', onPress: () => Location.openSettings?.() }, { text: 'Not now' }]
+      );
       return { success: false, reason: 'background_permission_denied' };
     }
 
@@ -97,8 +131,13 @@ export const startLocationTracking = async () => {
       showsBackgroundLocationIndicator: true,
     });
 
+    await setDiag({ lastStartAt: new Date().toISOString(), lastStartError: null });
     return { success: true };
   } catch (error) {
+    await setDiag({
+      lastStartAt: new Date().toISOString(),
+      lastStartError: error.message || String(error),
+    });
     return { success: false, reason: error.message };
   }
 };
@@ -122,6 +161,29 @@ export const isTrackingActive = async () => {
   } catch (e) {
     return false;
   }
+};
+
+export const getTrackingDiagnostics = async () => {
+  const diag = JSON.parse((await AsyncStorage.getItem(TRACKING_DIAG_KEY)) || '{}');
+  const queue = await readQueue();
+  let fg = 'unknown';
+  let bg = 'unknown';
+  try {
+    fg = (await Location.getForegroundPermissionsAsync()).granted ? 'granted' : 'denied';
+    bg = (await Location.getBackgroundPermissionsAsync()).status;
+  } catch (e) {}
+  const active = await isTrackingActive();
+  return {
+    foregroundPermission: fg,
+    backgroundPermission: bg,
+    trackingStarted: active,
+    queuedPings: queue.length,
+    lastStartAt: diag.lastStartAt,
+    lastStartError: diag.lastStartError,
+    lastFlushAt: diag.lastFlushAt,
+    lastFlushError: diag.lastFlushError,
+    lastUploaded: diag.lastUploaded,
+  };
 };
 
 export const syncTrackingWithShiftState = async (clockedIn) => {
