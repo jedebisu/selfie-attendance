@@ -47,6 +47,12 @@ eas build --platform android --profile preview   # APK build
 - **Dashboard**: Auto-deploys on push. Vercel rewrites SPA routes via `vercel.json`.
 - **Mobile**: Manual EAS builds. Use `--profile preview` for internal APK distribution.
 
+## Reliability Systems
+
+- **Keep-alive ping**: `.github/workflows/keep-alive.yml` (GitHub Actions, free on public repos) pings `/api/health` every 10 minutes so Render's free tier doesn't sleep the server. Check the Actions tab if cold starts return.
+- **Nightly DB backups**: `server/src/utils/backup.js` runs ~2 min after server boot if the last backup is >20h old (then re-checks every 6h). Dumps `users`, `attendance`, `leave_requests`, `location_pings` to JSON and uploads to Cloudinary folder `selfie-attendance-backups` as raw files; keeps the newest 14. The `naps` table is intentionally excluded — it auto-reimports from the committed CSV if ever empty. Without Cloudinary env vars it falls back to writing `server/backups/*.json` locally (gitignored).
+- **Restoring a backup**: `cd server && node scripts/restore-backup.js <path-or-URL-to-dump.json> --yes` — wipes and replaces the four tables in one transaction. Requires explicit `--yes`.
+
 ## Gotchas
 
 - **Dashboard build requires `CI=false`** — CRA treats lint warnings as errors. The `build` script in `dashboard/package.json` is `CI=false react-scripts build`. Vercel also has `CI=false` env var set. Never remove this.

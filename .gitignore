@@ -9,3 +9,6 @@ dist/
 .DS_Store
 uploads/*
 !uploads/.gitkeep
+
+# local backup dumps
+server/backups/

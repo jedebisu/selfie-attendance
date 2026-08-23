@@ -12,6 +12,7 @@ const exportRoutes = require('./routes/export');
 const analyticsRoutes = require('./routes/analytics');
 const napsRoutes = require('./routes/naps');
 const locationRoutes = require('./routes/location');
+const { scheduleBackups } = require('./utils/backup');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -237,6 +238,10 @@ const server = app.listen(PORT, async () => {
   
   // Periodic session cleanup every hour
   setInterval(cleanupSessions, 60 * 60 * 1000);
+
+  // Nightly database backup (runs ~2min after boot if last backup is stale,
+  // then re-checked every 6 hours)
+  scheduleBackups();
 });
 
 // Graceful shutdown
