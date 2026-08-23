@@ -187,7 +187,7 @@ const HomeScreen = memo(({ navigation }) => {
           style={styles.quickButton}
           onPress={() => navigation.navigate('NAPs')}
         >
-          <Text style={styles.quickButtonText}>🗺️ NAP Map</Text>
+          <Text style={styles.quickButtonText}>🗺️ NAP Checking</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

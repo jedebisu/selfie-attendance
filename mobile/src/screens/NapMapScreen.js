@@ -33,6 +33,7 @@ const NapMapScreen = ({ navigation }) => {
   const [showList, setShowList] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [droppedPin, setDroppedPin] = useState(null);
   const mapRef = useRef(null);
   const searchSeqRef = useRef(0);
 
@@ -139,6 +140,23 @@ const NapMapScreen = ({ navigation }) => {
     }
   };
 
+  const handleMapLongPress = useCallback(async (e) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+    const pin = { latitude, longitude };
+    setDroppedPin(pin);
+    setSelectedNap(null);
+    await fetchNearbyNaps(latitude, longitude);
+    mapRef.current?.animateToRegion({ ...pin, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 400);
+  }, [fetchNearbyNaps]);
+
+  const clearPin = async () => {
+    setDroppedPin(null);
+    if (location) {
+      await fetchNearbyNaps(location.latitude, location.longitude);
+      mapRef.current?.animateToRegion({ ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 400);
+    }
+  };
+
   const getMarkerColor = (vacantLines) => {
     if (vacantLines === 0) return COLORS.red;
     if (vacantLines <= 8) return COLORS.yellow;
@@ -227,9 +245,11 @@ const NapMapScreen = ({ navigation }) => {
       <View style={styles.statusBar}>
         <View style={styles.statusLeft}>
           <Text style={styles.statusText}>
-            {isSearching 
+            {isSearching
               ? `${searchResults.length} search results`
-              : `${nearbyNaps.length} NAPs within ${RADIUS_KM}km`
+              : droppedPin
+                ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km of pin`
+                : `${nearbyNaps.length} NAPs within ${RADIUS_KM}km`
             }
           </Text>
         </View>
@@ -240,6 +260,16 @@ const NapMapScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
+      {/* Pinned location banner */}
+      {droppedPin && !isSearching && (
+        <View style={styles.pinBanner}>
+          <Text style={styles.pinBannerText}>📍 Checking around pinned spot</Text>
+          <TouchableOpacity onPress={clearPin} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.pinBannerClear}>Clear ✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Map */}
       <MapView
         ref={mapRef}
@@ -247,16 +277,22 @@ const NapMapScreen = ({ navigation }) => {
         initialRegion={initialRegion}
         showsUserLocation={true}
         followsUserLocation={false}
+        onLongPress={handleMapLongPress}
       >
         {/* 1km radius circle */}
-        {location && !isSearching && (
+        {(droppedPin || location) && !isSearching && (
           <Circle
-            center={location}
+            center={droppedPin || location}
             radius={RADIUS_KM * 1000}
             fillColor="rgba(200, 149, 108, 0.08)"
             strokeColor={COLORS.primary}
             strokeWidth={1}
           />
+        )}
+
+        {/* Dropped pin */}
+        {droppedPin && (
+          <Marker coordinate={droppedPin} pinColor={COLORS.blue} />
         )}
 
         {/* NAP markers */}
@@ -436,6 +472,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#fff',
     fontWeight: '600',
+  },
+  pinBanner: {
+    position: 'absolute',
+    top: 108,
+    left: 12,
+    right: 12,
+    zIndex: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 246, 255, 0.97)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.blue,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  pinBannerText: {
+    fontSize: 12,
+    color: COLORS.blue,
+    fontWeight: '600',
+  },
+  pinBannerClear: {
+    fontSize: 12,
+    color: COLORS.red,
+    fontWeight: '700',
   },
   map: {
     flex: 1,

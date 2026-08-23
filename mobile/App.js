@@ -39,7 +39,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'EBISU T&A', headerTitleAlign: 'left' }} />
       <Tab.Screen name="Calendar" component={HistoryScreen} options={{ title: 'My Calendar' }} />
-      <Tab.Screen name="NAPs" component={NapMapScreen} options={{ title: 'CVN | CVS Naps' }} />
+      <Tab.Screen name="NAPs" component={NapMapScreen} options={{ title: 'NAP Checking' }} />
       <Tab.Screen name="Me" component={ProfileScreen} options={{ title: 'Me', headerShown: false }} />
     </Tab.Navigator>
   );
