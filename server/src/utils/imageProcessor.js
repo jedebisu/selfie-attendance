@@ -30,8 +30,14 @@ const processAttendancePhoto = async ({
 }) => {
   try {
     const metadata = await sharp(inputPath).metadata();
-    const width = metadata.width;
-    const height = metadata.height;
+
+    // Cap resolution: full-res phone photos (12MP+) are slow to encode AND
+    // make the timestamp overlay tiny. 1440px keeps faces clear, makes the
+    // evidence overlay more readable, and cuts CPU time ~10x.
+    const MAX_DIM = 1440;
+    const scale = Math.min(1, MAX_DIM / Math.max(metadata.width, metadata.height));
+    const width = Math.round(metadata.width * scale);
+    const height = Math.round(metadata.height * scale);
 
     const dateStr = timestamp.toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: '2-digit'
@@ -122,10 +128,11 @@ const processAttendancePhoto = async ({
       });
     }
 
-    await sharp(inputPath)
-      .rotate()
+    const pipeline = sharp(inputPath).rotate();
+    if (scale < 1) pipeline.resize(width, height);
+    await pipeline
       .composite(composites)
-      .jpeg({ quality: 90 })
+      .jpeg({ quality: 78 })
       .toFile(outputPath);
 
     console.log('Photo processed successfully:', outputPath);

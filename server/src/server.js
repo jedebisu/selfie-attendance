@@ -13,6 +13,7 @@ const analyticsRoutes = require('./routes/analytics');
 const napsRoutes = require('./routes/naps');
 const locationRoutes = require('./routes/location');
 const { scheduleBackups } = require('./utils/backup');
+const { schedulePurge } = require('./utils/purge');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -242,6 +243,10 @@ const server = app.listen(PORT, async () => {
   // Nightly database backup (runs ~2min after boot if last backup is stale,
   // then re-checked every 6 hours)
   scheduleBackups();
+
+  // Daily purge of GPS pings older than 90 days (keeps DB size bounded;
+  // attendance records and photos are never purged)
+  schedulePurge();
 });
 
 // Graceful shutdown

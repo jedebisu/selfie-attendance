@@ -52,6 +52,8 @@ eas build --platform android --profile preview   # APK build
 - **Keep-alive ping**: `.github/workflows/keep-alive.yml` (GitHub Actions, free on public repos) pings `/api/health` every 10 minutes so Render's free tier doesn't sleep the server. Check the Actions tab if cold starts return.
 - **Nightly DB backups**: `server/src/utils/backup.js` runs ~2 min after server boot if the last backup is >20h old (then re-checks every 6h). Dumps `users`, `attendance`, `leave_requests`, `location_pings` to JSON and uploads to Cloudinary folder `selfie-attendance-backups` as raw files; keeps the newest 14. The `naps` table is intentionally excluded — it auto-reimports from the committed CSV if ever empty. Without Cloudinary env vars it falls back to writing `server/backups/*.json` locally (gitignored).
 - **Restoring a backup**: `cd server && node scripts/restore-backup.js <path-or-URL-to-dump.json> --yes` — wipes and replaces the four tables in one transaction. Requires explicit `--yes`.
+- **GPS ping retention**: `server/src/utils/purge.js` deletes location pings older than 90 days, daily (5 min after boot, then every 24h). Attendance rows and photos are never purged. Keeps DB bounded for large teams on free tiers.
+- **Photo pipeline caps at 1440px / JPEG q78** (`imageProcessor.js`) — deliberate trade-off: ~37x smaller files than full-res q90 (faster clock-in uploads, Cloudinary free tier lasts years, evidence overlay more readable at lower res). Don't "fix" back to full resolution without revisiting storage math.
 
 ## Gotchas
 
