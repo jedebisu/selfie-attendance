@@ -135,7 +135,7 @@ const LeaveApprovalScreen = () => {
     return (
       <View style={styles.container}>
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>CEO access only</Text>
+          <Text style={styles.emptyText}>Executive access only</Text>
         </View>
       </View>
     );

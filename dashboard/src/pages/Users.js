@@ -22,13 +22,13 @@ const Users = () => {
     { value: 'employee', label: 'Employee' },
     { value: 'admin', label: 'Admin' },
     { value: 'hr', label: 'HR' },
-    { value: 'ceo', label: 'CEO' }
+    { value: 'ceo', label: 'Executive' }
   ];
 
   const ROLE_BADGES = {
     admin: { className: 'badge badge-gold', label: 'Admin', icon: true },
     hr: { className: 'badge badge-purple', label: 'HR', icon: false },
-    ceo: { className: 'badge badge-blue', label: 'CEO', icon: false },
+    ceo: { className: 'badge badge-blue', label: 'Executive', icon: false },
     employee: { className: 'badge badge-gray', label: 'Employee', icon: false }
   };
 

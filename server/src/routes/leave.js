@@ -250,7 +250,7 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     if (!isCEO(req.user)) {
-      return res.status(403).json({ error: 'Only the CEO can approve or reject leave requests' });
+      return res.status(403).json({ error: 'Only an Executive can approve or reject leave requests' });
     }
 
     const { id } = req.params;
@@ -282,7 +282,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     if (!isHR(req.user) && !isCEO(req.user)) {
-      return res.status(403).json({ error: 'Only HR or the CEO can delete leave requests' });
+      return res.status(403).json({ error: 'Only HR or an Executive can delete leave requests' });
     }
 
     const { id } = req.params;
