@@ -70,6 +70,17 @@ const HomeScreen = memo(({ navigation }) => {
     navigation.navigate('Camera', { status: 'clock_out' });
   };
 
+  const handleOpenNaps = () => {
+    if (!todaySummary?.clock_in || todaySummary?.clock_out) {
+      Alert.alert(
+        'Not Clocked In',
+        'The NAP map is only available while you are clocked in.'
+      );
+      return;
+    }
+    navigation.navigate('NapMap');
+  };
+
   const handleLogout = () => {
     logout();
   };
@@ -164,7 +175,7 @@ const HomeScreen = memo(({ navigation }) => {
 
       <TouchableOpacity
         style={[styles.historyButton, { backgroundColor: '#1a1d23', marginTop: 12 }]}
-        onPress={() => navigation.navigate('NapMap')}
+        onPress={handleOpenNaps}
       >
         <Text style={[styles.historyButtonText, { color: '#fff' }]}>CVN | CVS Naps</Text>
       </TouchableOpacity>
