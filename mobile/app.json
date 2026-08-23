@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#007AFF"
+      "backgroundColor": "#ffffff"
     },
     "assetBundlePatterns": [
       "assets/**/*"
@@ -28,7 +28,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#007AFF"
+        "backgroundColor": "#ffffff"
       },
       "package": "com.jedebisu.selfieattendance",
       "enableDangerousExperimentalLeanBuilds": true,
@@ -48,7 +48,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM"
       ],
-      "versionCode": 14
+      "versionCode": 15
     },
     "extra": {
       "eas": {
