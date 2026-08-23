@@ -10,11 +10,20 @@ import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notificat
 import { syncTrackingWithShiftState } from '../services/locationTracker';
 
 const HomeScreen = memo(({ navigation }) => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [todaySummary, setTodaySummary] = useState(null);
   const [isOnline, setIsOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  const onShift = Boolean(todaySummary?.clock_in) && !todaySummary?.clock_out;
+
+  useEffect(() => {
+    if (!onShift) return;
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, [onShift]);
 
   const fetchTodaySummary = useCallback(async () => {
     try {
@@ -70,8 +79,12 @@ const HomeScreen = memo(({ navigation }) => {
     navigation.navigate('Camera', { status: 'clock_out' });
   };
 
-  const handleLogout = () => {
-    logout();
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  const formatElapsed = (ms) => {
+    const mins = Math.max(0, Math.floor(ms / 60000));
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
   };
 
   return (
@@ -81,12 +94,8 @@ const HomeScreen = memo(({ navigation }) => {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.greeting}>Hello, {user?.name || 'User'}!</Text>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.greeting}>{greeting},</Text>
+        <Text style={styles.greetingName}>{user?.name?.split(' ')[0] || 'User'} 👋</Text>
         <Text style={styles.date}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
         
         {!isOnline && (
@@ -127,6 +136,15 @@ const HomeScreen = memo(({ navigation }) => {
           </View>
         </View>
 
+        {onShift && (
+          <View style={styles.hoursBlock}>
+            <Text style={styles.hoursLabel}>On Shift</Text>
+            <Text style={styles.hoursValue}>
+              {formatElapsed(now - new Date(todaySummary.clock_in))}
+            </Text>
+          </View>
+        )}
+
         {todaySummary?.clock_in && todaySummary?.clock_out && (
           <View style={styles.hoursBlock}>
             <Text style={styles.hoursLabel}>Hours Worked</Text>
@@ -158,25 +176,20 @@ const HomeScreen = memo(({ navigation }) => {
         )}
       </View>
 
-      <TouchableOpacity style={styles.historyButton} onPress={() => navigation.navigate('History')}>
-        <Text style={styles.historyButtonText}>My Attendance</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.historyButton, { backgroundColor: '#1a1d23', marginTop: 12 }]}
-        onPress={() => navigation.navigate('NapMap')}
-      >
-        <Text style={[styles.historyButtonText, { color: '#fff' }]}>CVN | CVS Naps</Text>
-      </TouchableOpacity>
-
-      {user?.role === 'ceo' && (
+      <View style={styles.quickRow}>
         <TouchableOpacity
-          style={[styles.historyButton, { backgroundColor: '#22c55e', marginTop: 12 }]}
-          onPress={() => navigation.navigate('LeaveApproval')}
+          style={styles.quickButton}
+          onPress={() => navigation.navigate('Calendar')}
         >
-          <Text style={[styles.historyButtonText, { color: '#fff' }]}>Leave Approvals</Text>
+          <Text style={styles.quickButtonText}>📅 Calendar</Text>
         </TouchableOpacity>
-      )}
+        <TouchableOpacity
+          style={styles.quickButton}
+          onPress={() => navigation.navigate('NAPs')}
+        >
+          <Text style={styles.quickButtonText}>🗺️ NAP Map</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 });
@@ -192,23 +205,15 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 24,
   },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   greeting: {
-    fontSize: 28,
+    fontSize: 20,
+    color: '#666',
+  },
+  greetingName: {
+    fontSize: 30,
     fontWeight: 'bold',
     color: '#1a1d23',
-  },
-  logoutButton: {
-    padding: 8,
-  },
-  logoutText: {
-    color: '#ef4444',
-    fontSize: 14,
-    fontWeight: '600',
+    marginTop: 2,
   },
   date: {
     fontSize: 16,
@@ -328,17 +333,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  historyButton: {
+  quickRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  quickButton: {
+    flex: 1,
     backgroundColor: '#fff',
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e5e7eb',
   },
-  historyButtonText: {
+  quickButtonText: {
     color: '#1a1d23',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
 });
