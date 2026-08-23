@@ -98,8 +98,19 @@ export const startLocationTracking = async () => {
       }
     }
 
-    const background = await Location.requestBackgroundPermissionsAsync();
-    if (background.status !== 'granted') {
+    const background = await Location.getBackgroundPermissionsAsync();
+    if (!background.granted) {
+      await new Promise((resolve) => {
+        Alert.alert(
+          'One more step',
+          'On the next screen, please tap "Allow all the time".\n\nThis lets EBISU record your work route even when the app is closed, while you are clocked in.',
+          [{ text: 'Continue', onPress: resolve }]
+        );
+      });
+    }
+
+    const backgroundRequest = await Location.requestBackgroundPermissionsAsync();
+    if (backgroundRequest.status !== 'granted') {
       await setDiag({
         lastStartAt: new Date().toISOString(),
         lastStartError: 'background_permission_denied',
