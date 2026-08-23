@@ -303,7 +303,7 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
 // Get all attendance records (with filters) — AFTER /summary/* routes
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { user_id, date, status, page = 1, limit = 50 } = req.query;
+    const { user_id, date, status, page = 1, limit = 50, start_date, end_date } = req.query;
     const offset = (page - 1) * limit;
 
     let query = `
@@ -325,6 +325,18 @@ router.get('/', authenticateToken, async (req, res) => {
       paramCount++;
       query += ` AND DATE(a.timestamp + INTERVAL '8 hours') = $${paramCount}`;
       params.push(date);
+    }
+
+    if (start_date) {
+      paramCount++;
+      query += ` AND DATE(a.timestamp + INTERVAL '8 hours') >= $${paramCount}`;
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      paramCount++;
+      query += ` AND DATE(a.timestamp + INTERVAL '8 hours') <= $${paramCount}`;
+      params.push(end_date);
     }
 
     if (status) {

@@ -9,7 +9,8 @@ const Attendance = () => {
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
   const [filters, setFilters] = useState({
-    date: format(new Date(), 'yyyy-MM-dd'),
+    start_date: format(new Date(), 'yyyy-MM-dd'),
+    end_date: format(new Date(), 'yyyy-MM-dd'),
     status: '',
     user_id: ''
   });
@@ -53,15 +54,19 @@ const Attendance = () => {
   const exportToCSV = async () => {
     try {
       const params = {};
-      if (filters.date) params.start_date = filters.date;
-      if (filters.date) params.end_date = filters.date;
+      if (filters.start_date) params.start_date = filters.start_date;
+      if (filters.end_date) params.end_date = filters.end_date;
       if (filters.status) params.status = filters.status;
       if (filters.user_id) params.user_id = filters.user_id;
       const res = await exportAPI.attendance(params);
       const url = URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `attendance_${filters.date || 'all'}.csv`;
+      const rangeLabel =
+        filters.start_date && filters.end_date && filters.start_date !== filters.end_date
+          ? `${filters.start_date}_to_${filters.end_date}`
+          : filters.start_date || 'all';
+      a.download = `attendance_${rangeLabel}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Exported successfully');
@@ -92,11 +97,20 @@ const Attendance = () => {
       <div className="filters-bar">
         <div className="filter-group">
           <Filter size={18} />
-          <label>Date:</label>
+          <label>From:</label>
           <input
             type="date"
-            value={filters.date}
-            onChange={(e) => handleFilterChange('date', e.target.value)}
+            value={filters.start_date}
+            onChange={(e) => handleFilterChange('start_date', e.target.value)}
+          />
+        </div>
+
+        <div className="filter-group">
+          <label>To:</label>
+          <input
+            type="date"
+            value={filters.end_date}
+            onChange={(e) => handleFilterChange('end_date', e.target.value)}
           />
         </div>
         
