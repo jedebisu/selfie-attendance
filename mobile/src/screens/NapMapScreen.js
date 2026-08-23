@@ -6,8 +6,7 @@ import {
 import MapView, { Marker, Callout, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useAuth } from '../context/AuthContext';
-import { napsAPI, attendanceAPI } from '../services/api';
-import { getCachedTodaySummary } from '../services/cache';
+import { napsAPI } from '../services/api';
 import { debounce, parseCoordinate } from '../utils/helpers';
 
 const COLORS = {
@@ -34,29 +33,12 @@ const NapMapScreen = ({ navigation }) => {
   const [showList, setShowList] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [shiftActive, setShiftActive] = useState(null);
   const mapRef = useRef(null);
   const searchSeqRef = useRef(0);
 
-  const verifyShift = useCallback(async () => {
-    setShiftActive(null);
-    try {
-      const summary = await attendanceAPI.getTodaySummary();
-      setShiftActive(Boolean(summary?.clock_in) && !summary?.clock_out);
-    } catch (error) {
-      try {
-        const cached = await getCachedTodaySummary();
-        setShiftActive(Boolean(cached?.clock_in) && !cached?.clock_out);
-      } catch (e) {
-        setShiftActive(false);
-      }
-    }
-  }, []);
-
   useEffect(() => {
-    verifyShift();
     getCurrentLocation();
-  }, [verifyShift]);
+  }, []);
 
   const getCurrentLocation = async () => {
     try {
@@ -215,56 +197,9 @@ const NapMapScreen = ({ navigation }) => {
   };
 
   const displayNaps = isSearching ? searchResults : nearbyNaps;
-  const initialRegion = location
+  const initialRegion = location 
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { latitude: 10.3157, longitude: 123.8854, latitudeDelta: 0.5, longitudeDelta: 0.5 };
-
-  if (shiftActive === null) {
-    return (
-      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={{ marginTop: 12, color: COLORS.gray }}>Checking shift status...</Text>
-      </View>
-    );
-  }
-
-  if (!shiftActive) {
-    return (
-      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', padding: 30 }]}>
-        <Text style={{ fontSize: 44, marginBottom: 16 }}>🔒</Text>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.dark, textAlign: 'center' }}>
-          Clock in to use the NAP map
-        </Text>
-        <Text style={{ fontSize: 14, color: COLORS.gray, textAlign: 'center', marginTop: 8, marginBottom: 24 }}>
-          The map is only available while you are on shift.
-        </Text>
-        <TouchableOpacity
-          style={{
-            backgroundColor: COLORS.primary,
-            paddingHorizontal: 28,
-            paddingVertical: 12,
-            borderRadius: 10,
-            marginBottom: 10,
-          }}
-          onPress={verifyShift}
-        >
-          <Text style={{ color: '#fff', fontWeight: '600' }}>Retry</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{
-            borderWidth: 1,
-            borderColor: COLORS.lightGray,
-            paddingHorizontal: 28,
-            paddingVertical: 12,
-            borderRadius: 10,
-          }}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={{ color: COLORS.dark, fontWeight: '600' }}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>

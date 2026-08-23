@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { attendanceAPI } from '../services/api';
@@ -68,17 +68,6 @@ const HomeScreen = memo(({ navigation }) => {
 
   const handleClockOut = () => {
     navigation.navigate('Camera', { status: 'clock_out' });
-  };
-
-  const handleOpenNaps = () => {
-    if (!todaySummary?.clock_in || todaySummary?.clock_out) {
-      Alert.alert(
-        'Not Clocked In',
-        'The NAP map is only available while you are clocked in.'
-      );
-      return;
-    }
-    navigation.navigate('NapMap');
   };
 
   const handleLogout = () => {
@@ -175,7 +164,7 @@ const HomeScreen = memo(({ navigation }) => {
 
       <TouchableOpacity
         style={[styles.historyButton, { backgroundColor: '#1a1d23', marginTop: 12 }]}
-        onPress={handleOpenNaps}
+        onPress={() => navigation.navigate('NapMap')}
       >
         <Text style={[styles.historyButtonText, { color: '#fff' }]}>CVN | CVS Naps</Text>
       </TouchableOpacity>
