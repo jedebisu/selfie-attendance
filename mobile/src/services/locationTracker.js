@@ -1,5 +1,6 @@
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
+import * as Battery from 'expo-battery';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { locationAPI } from './api';
@@ -22,11 +23,18 @@ TaskManager.defineTask(TRACKING_TASK, async ({ data, error }) => {
   const locations = data?.locations;
   if (!locations || locations.length === 0) return;
 
+  let batteryLevel = null;
+  try {
+    const level = await Battery.getBatteryLevelAsync();
+    batteryLevel = Math.round(level * 100);
+  } catch (e) {}
+
   const pings = locations.map((loc) => ({
     latitude: loc.coords.latitude,
     longitude: loc.coords.longitude,
     accuracy_m: loc.coords.accuracy ?? null,
     speed_mps: loc.coords.speed ?? null,
+    battery_pct: batteryLevel,
     pinged_at: new Date(loc.timestamp || Date.now()).toISOString(),
   }));
 
