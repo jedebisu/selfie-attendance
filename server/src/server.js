@@ -14,6 +14,7 @@ const napsRoutes = require('./routes/naps');
 const locationRoutes = require('./routes/location');
 const { scheduleBackups } = require('./utils/backup');
 const { schedulePurge } = require('./utils/purge');
+const { scheduleAutoClockOut } = require('./utils/autoClockOut');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -247,6 +248,9 @@ const server = app.listen(PORT, async () => {
   // Daily purge of GPS pings older than 90 days (keeps DB size bounded;
   // attendance records and photos are never purged)
   schedulePurge();
+
+  // Auto clock-out employees who exceeded MAX_HOURS without clocking out
+  scheduleAutoClockOut();
 });
 
 // Graceful shutdown
