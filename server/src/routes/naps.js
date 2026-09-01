@@ -242,66 +242,90 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// Admin-only: re-import NAPs from the committed naps_export.csv.gz (upsert)
+// In-memory tracker for the (slow) background NAP import. The full upsert of
+// ~318k rows exceeds the hosting proxy's request timeout, so the endpoint
+// returns immediately and the import keeps running in the background.
+let napImportJob = { running: false, imported: 0, total: 0, done: false, error: null, startedAt: null, finishedAt: null };
+
+// Admin-only: re-import NAPs from the committed naps_export.csv.gz (upsert).
+// Runs in the background so the response is returned before the proxy timeout.
 router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const gzPath = path.join(__dirname, '..', 'config', 'naps_export.csv.gz');
-    if (!fs.existsSync(gzPath)) {
-      return res.status(404).json({ error: 'naps_export.csv.gz not found on server' });
-    }
+  if (napImportJob.running) {
+    return res.status(409).json({ error: 'NAP import already in progress' });
+  }
 
-    const csv = zlib.gunzipSync(fs.readFileSync(gzPath)).toString('utf-8');
-    const lines = csv.split('\n');
+  const gzPath = path.join(__dirname, '..', 'config', 'naps_export.csv.gz');
+  if (!fs.existsSync(gzPath)) {
+    return res.status(404).json({ error: 'naps_export.csv.gz not found on server' });
+  }
 
-    // 17 params per row; PostgreSQL caps bind at 65535 params, so keep
-    // batches at or below 3800 rows (3800 * 17 = 64600)
-    const BATCH_SIZE = 3000;
-    let imported = 0;
-    let batch = [];
+  // Reset job state
+  const job = napImportJob = {
+    running: true, imported: 0, total: 0, done: false, error: null,
+    startedAt: new Date().toISOString(), finishedAt: null,
+  };
 
-    await client.query('BEGIN');
+  res.status(202).json({ message: 'NAP import started in background', jobId: 'nap-import' });
 
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].replace(/\r/g, '');
-      if (!line.trim()) continue;
+  (async () => {
+    const client = await pool.connect();
+    try {
+      const csv = zlib.gunzipSync(fs.readFileSync(gzPath)).toString('utf-8');
+      const lines = csv.split('\n');
 
-      const f = parseCsvLine17(line);
-      if (f.length < 17) continue;
+      // 17 params per row; PostgreSQL caps bind at 65535 params, so keep
+      // batches at or below 3800 rows (3800 * 17 = 64600)
+      const BATCH_SIZE = 3000;
+      let imported = 0;
+      let batch = [];
 
-      batch.push(f);
-      if (batch.length >= BATCH_SIZE) {
+      job.total = lines.length;
+
+      await client.query('BEGIN');
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].replace(/\r/g, '');
+        if (!line.trim()) continue;
+
+        const f = parseCsvLine17(line);
+        if (f.length < 17) continue;
+
+        batch.push(f);
+        if (batch.length >= BATCH_SIZE) {
+          await upsertNapsBatch(client, batch);
+          imported += batch.length;
+          job.imported = imported;
+          batch = [];
+          console.log(`NAP import: ${imported} rows...`);
+        }
+      }
+
+      if (batch.length > 0) {
         await upsertNapsBatch(client, batch);
         imported += batch.length;
-        batch = [];
-        console.log(`NAP import: ${imported} rows...`);
+        job.imported = imported;
       }
+
+      await client.query('COMMIT');
+      job.done = true;
+      job.finishedAt = new Date().toISOString();
+      console.log(`NAP import complete: ${imported} rows`);
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      job.error = error.message;
+      job.done = true;
+      job.finishedAt = new Date().toISOString();
+      console.error('NAP import failed:', error);
+    } finally {
+      client.release();
+      job.running = false;
     }
+  })();
+});
 
-    if (batch.length > 0) {
-      await upsertNapsBatch(client, batch);
-      imported += batch.length;
-    }
-
-    await client.query('COMMIT');
-
-    const stats = await pool.query(`
-      SELECT
-        COUNT(*) AS total_naps,
-        SUM(total_capacity) AS total_ports,
-        SUM(working_lines) AS used_ports,
-        SUM(vacant_lines) AS available_ports
-      FROM naps
-    `);
-
-    res.json({ imported, ...stats.rows[0] });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('NAP import failed:', error);
-    res.status(500).json({ error: 'Import failed', message: error.message });
-  } finally {
-    client.release();
-  }
+// Status of the background NAP import (admin-only)
+router.get('/import/status', authenticateToken, requireAdmin, async (req, res) => {
+  res.json(napImportJob);
 });
 
 function str(val, maxLen) {
