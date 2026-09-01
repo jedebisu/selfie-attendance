@@ -121,9 +121,9 @@ def main():
 
     written = 0
     skipped = 0
+    rows = {}
 
-    with open(input_path, 'r', encoding='utf-8-sig', errors='replace') as fin, \
-         gzip.open(output_path, 'wt', encoding='utf-8', newline='') as fout:
+    with open(input_path, 'r', encoding='utf-8-sig', errors='replace') as fin:
 
         # Locate header row (report files have leading title rows)
         header_found = False
@@ -135,10 +135,6 @@ def main():
         if not header_found:
             print('ERROR: could not find header row in input')
             sys.exit(1)
-
-        # Write CSV header (plain, not quoted)
-        out_line = ','.join(HEADERS) + '\n'
-        fout.write(out_line)
 
         for line_num, raw_line in enumerate(fin, start=1):
             row = raw_line.rstrip('\r\n').split(';')
@@ -196,21 +192,27 @@ def main():
                 brgy or '',                                # barangay_name
             ]
 
-            # Properly quote fields that may contain commas or quotes
+            # Deduplicate by nap_id, keeping the LAST occurrence
+            rows[nap_id] = fields
+            written += 1
+
+            if written % 50000 == 0:
+                print(f'  Progress: {written} rows scanned, {skipped} skipped...')
+
+    with gzip.open(output_path, 'wt', encoding='utf-8', newline='') as fout:
+        out_line = ','.join(HEADERS) + '\n'
+        fout.write(out_line)
+        for nap_id in rows:
+            fields = rows[nap_id]
             quoted = []
             for val in fields:
                 if ',' in val or '"' in val or '\n' in val:
                     val = '"' + val.replace('"', '""') + '"'
                 quoted.append(val)
-
             fout.write(','.join(quoted) + '\n')
-            written += 1
-
-            if written % 50000 == 0:
-                print(f'  Progress: {written} written, {skipped} skipped...')
 
     print(f'\nDone!')
-    print(f'  Written: {written}')
+    print(f'  Written: {len(rows)} (unique nap_ids from {written} rows)')
     print(f'  Skipped: {skipped}')
     print(f'  Output: {output_path}')
 
