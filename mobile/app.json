@@ -2,7 +2,7 @@
   "expo": {
     "name": "EBISU T&A",
     "slug": "selfie-attendance",
-    "version": "1.4.1",
+    "version": "1.4.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -48,8 +48,20 @@
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM"
       ],
-      "versionCode": 20
+      "versionCode": 21
     },
+    "updates": {
+      "url": "https://u.expo.dev/72936711-ce2c-4e50-bcac-9e76c80abd4c",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "plugins": [
+      "expo-updates"
+    ],
     "extra": {
       "eas": {
         "projectId": "72936711-ce2c-4e50-bcac-9e76c80abd4c"
