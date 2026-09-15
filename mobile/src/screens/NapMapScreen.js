@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, Callout, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
+import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
 import { debounce, parseCoordinate } from '../utils/helpers';
@@ -21,6 +22,22 @@ const COLORS = {
 };
 
 const RADIUS_KM = 1;
+
+const formatLatLng = (lat, lng) => {
+  const latNum = parseFloat(lat);
+  const lngNum = parseFloat(lng);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return 'N/A';
+  return `${latNum.toFixed(6)}, ${lngNum.toFixed(6)}`;
+};
+
+const copyToClipboard = async (text) => {
+  try {
+    await Clipboard.setStringAsync(text);
+    Alert.alert('Copied', 'Copied to clipboard');
+  } catch (error) {
+    Alert.alert('Copy failed', 'Could not copy to clipboard');
+  }
+};
 
 const NapMapScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -344,6 +361,10 @@ const NapMapScreen = ({ navigation }) => {
             <InfoRow label="City" value={selectedNap.city_name || 'N/A'} />
             <InfoRow label="Province" value={selectedNap.province_name || 'N/A'} />
             <InfoRow label="OLT" value={selectedNap.cabinet || 'N/A'} />
+            <InfoRow
+              label="Lat / Long"
+              value={formatLatLng(selectedNap.dp_nap_lat, selectedNap.dp_nap_long)}
+            />
             {selectedNap.distance_km !== undefined && (
               <InfoRow 
                 label="Distance" 
@@ -378,7 +399,13 @@ const NapMapScreen = ({ navigation }) => {
 const InfoRow = ({ label, value }) => (
   <View style={styles.infoRow}>
     <Text style={styles.infoLabel}>{label}</Text>
-    <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
+    <Text
+      style={styles.infoValue}
+      numberOfLines={1}
+      onLongPress={() => copyToClipboard(value)}
+    >
+      {value}
+    </Text>
   </View>
 );
 
