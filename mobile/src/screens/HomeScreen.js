@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback, memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { attendanceAPI } from '../services/api';
+import { attendanceAPI, napsAPI } from '../services/api';
 import { getCachedTodaySummary, cacheTodaySummary } from '../services/cache';
 import { checkConnection } from '../services/network';
 import { getQueueLength } from '../services/offlineQueue';
 import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notifications';
 import { syncTrackingWithShiftState } from '../services/locationTracker';
+import { formatDateTime } from '../utils/helpers';
 
 const HomeScreen = memo(({ navigation }) => {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ const HomeScreen = memo(({ navigation }) => {
   const [pendingCount, setPendingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [lastDataUpdate, setLastDataUpdate] = useState(null);
 
   const onShift = Boolean(todaySummary?.clock_in) && !todaySummary?.clock_out;
 
@@ -34,6 +36,10 @@ const HomeScreen = memo(({ navigation }) => {
         const summary = await attendanceAPI.getTodaySummary();
         setTodaySummary(summary);
         await cacheTodaySummary(summary);
+
+        napsAPI.getStats()
+          .then((stats) => setLastDataUpdate(stats.last_data_update))
+          .catch(() => {});
       } else {
         const cached = await getCachedTodaySummary();
         if (cached) setTodaySummary(cached);
@@ -183,12 +189,17 @@ const HomeScreen = memo(({ navigation }) => {
         >
           <Text style={styles.quickButtonText}>📅 Calendar</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.quickButton}
-          onPress={() => navigation.navigate('NAPs')}
-        >
-          <Text style={styles.quickButtonText}>🗺️ NAP Checking</Text>
-        </TouchableOpacity>
+        <View style={styles.quickNapContainer}>
+          <TouchableOpacity
+            style={styles.quickButton}
+            onPress={() => navigation.navigate('NAPs')}
+          >
+            <Text style={styles.quickButtonText}>🗺️ NAP Checking</Text>
+          </TouchableOpacity>
+          <Text style={styles.dataUpdateText}>
+            Data last updated: {lastDataUpdate ? formatDateTime(lastDataUpdate) : '—'}
+          </Text>
+        </View>
       </View>
     </ScrollView>
   );
@@ -336,6 +347,10 @@ const styles = StyleSheet.create({
   quickRow: {
     flexDirection: 'row',
     gap: 12,
+    alignItems: 'flex-start',
+  },
+  quickNapContainer: {
+    flex: 1,
   },
   quickButton: {
     flex: 1,
@@ -350,6 +365,12 @@ const styles = StyleSheet.create({
     color: '#1a1d23',
     fontSize: 15,
     fontWeight: '600',
+  },
+  dataUpdateText: {
+    fontSize: 11,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 6,
   },
 });
 

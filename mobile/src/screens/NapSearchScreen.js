@@ -6,7 +6,7 @@ import {
 import MapView, { Marker, Callout } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
 import { napsAPI } from '../services/api';
-import { debounce, parseCoordinate, formatDateTime } from '../utils/helpers';
+import { debounce, parseCoordinate } from '../utils/helpers';
 import StatusBadge from '../components/StatusBadge';
 
 const COLORS = {
@@ -258,7 +258,6 @@ const NapSearchScreen = ({ navigation }) => {
             <InfoRow label="Province" value={selectedNap.province_name || 'N/A'} />
             <InfoRow label="OLT" value={selectedNap.cabinet || 'N/A'} />
             <InfoRow label="Status" value={selectedNap.naps_status || 'N/A'} />
-            <InfoRow label="Last updated" value={formatDateTime(selectedNap.updated_at)} />
           </View>
 
           <View style={styles.portsGrid}>

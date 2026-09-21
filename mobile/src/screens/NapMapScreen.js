@@ -8,7 +8,7 @@ import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
-import { debounce, parseCoordinate, formatDateTime } from '../utils/helpers';
+import { debounce, parseCoordinate } from '../utils/helpers';
 import StatusBadge from '../components/StatusBadge';
 
 const COLORS = {
@@ -251,7 +251,6 @@ const NapMapScreen = ({ navigation }) => {
           <FieldRow label="Physical Status" value={nap.naps_status} />
           <FieldRow label="NAP Location" value={nap.location_type} />
           <FieldRow label="NAP Address" value={address} />
-          <FieldRow label="Last updated" value={formatDateTime(nap.updated_at)} />
         </View>
       </TouchableOpacity>
     );
@@ -406,7 +405,6 @@ const NapMapScreen = ({ navigation }) => {
             <InfoRow label="Province" value={selectedNap.province_name || 'N/A'} />
             <InfoRow label="OLT" value={selectedNap.cabinet || 'N/A'} />
             <InfoRow label="Status" value={selectedNap.naps_status || 'N/A'} />
-            <InfoRow label="Last updated" value={formatDateTime(selectedNap.updated_at)} />
             <InfoRow
               label="Lat / Long"
               value={formatLatLng(selectedNap.dp_nap_lat, selectedNap.dp_nap_long)}

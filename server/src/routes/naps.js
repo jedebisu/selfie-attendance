@@ -147,7 +147,8 @@ router.get('/stats/summary', async (req, res) => {
         SUM(CASE WHEN vacant_lines > 8 THEN 1 ELSE 0 END) as available_naps,
         SUM(total_capacity) as total_ports,
         SUM(working_lines) as used_ports,
-        SUM(vacant_lines) as available_ports
+        SUM(vacant_lines) as available_ports,
+        MAX(updated_at) as last_data_update
       FROM naps
       WHERE dp_nap_lat BETWEEN 9.5 AND 12.5
         AND dp_nap_long BETWEEN 122 AND 127
