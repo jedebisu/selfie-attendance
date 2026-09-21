@@ -6,7 +6,8 @@ import {
 import MapView, { Marker, Callout } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
 import { napsAPI } from '../services/api';
-import { debounce, parseCoordinate } from '../utils/helpers';
+import { debounce, parseCoordinate, formatDateTime } from '../utils/helpers';
+import StatusBadge from '../components/StatusBadge';
 
 const COLORS = {
   green: '#22c55e',
@@ -18,12 +19,20 @@ const COLORS = {
   lightGray: '#e5e7eb',
 };
 
+const STATUS_FILTERS = [
+  { label: 'All', value: '' },
+  { label: 'In Service', value: 'In Service' },
+  { label: 'Out of Service', value: 'Defective' },
+  { label: 'Planned', value: 'Planned' },
+];
+
 const NapSearchScreen = ({ navigation }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedNap, setSelectedNap] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
 
   const debouncedSearch = useCallback(
     debounce(async (searchQuery) => {
@@ -35,7 +44,7 @@ const NapSearchScreen = ({ navigation }) => {
 
       try {
         setLoading(true);
-        const response = await napsAPI.search({ q: searchQuery, limit: 30 });
+        const response = await napsAPI.search({ q: searchQuery, limit: 30, status: statusFilter || undefined });
         setResults(response.naps || []);
         setHasSearched(true);
       } catch (error) {
@@ -45,12 +54,19 @@ const NapSearchScreen = ({ navigation }) => {
         setLoading(false);
       }
     }, 300),
-    []
+    [statusFilter]
   );
 
   const handleSearchChange = (text) => {
     setQuery(text);
     debouncedSearch(text);
+  };
+
+  const handleStatusFilter = (value) => {
+    setStatusFilter(value);
+    if (query.trim().length >= 2) {
+      debouncedSearch(query);
+    }
   };
 
   const clearSearch = () => {
@@ -79,7 +95,10 @@ const NapSearchScreen = ({ navigation }) => {
       >
         <View style={[styles.statusDot, { backgroundColor: color }]} />
         <View style={styles.resultContent}>
-          <Text style={styles.resultTitle}>{nap.nap_id}</Text>
+          <View style={styles.resultTitleRow}>
+            <Text style={styles.resultTitle} numberOfLines={1}>{nap.nap_id}</Text>
+            <StatusBadge status={nap.naps_status} />
+          </View>
           <Text style={styles.resultSubtitle} numberOfLines={1}>
             {nap.building_served || 'N/A'}
           </Text>
@@ -118,6 +137,21 @@ const NapSearchScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
         </View>
+      </View>
+
+      {/* Status Filter Chips */}
+      <View style={styles.chipsRow}>
+        {STATUS_FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.value || 'all'}
+            style={[styles.chip, statusFilter === f.value && styles.chipActive]}
+            onPress={() => handleStatusFilter(f.value)}
+          >
+            <Text style={[styles.chipText, statusFilter === f.value && styles.chipTextActive]}>
+              {f.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Results Count */}
@@ -214,6 +248,7 @@ const NapSearchScreen = ({ navigation }) => {
               <Text style={styles.detailTitle}>{selectedNap.nap_id}</Text>
               <Text style={styles.detailSubtitle}>{selectedNap.location_type}</Text>
             </View>
+            <StatusBadge status={selectedNap.naps_status} size="lg" />
           </View>
 
           <View style={styles.detailInfo}>
@@ -223,6 +258,7 @@ const NapSearchScreen = ({ navigation }) => {
             <InfoRow label="Province" value={selectedNap.province_name || 'N/A'} />
             <InfoRow label="OLT" value={selectedNap.cabinet || 'N/A'} />
             <InfoRow label="Status" value={selectedNap.naps_status || 'N/A'} />
+            <InfoRow label="Last updated" value={formatDateTime(selectedNap.updated_at)} />
           </View>
 
           <View style={styles.portsGrid}>
@@ -300,6 +336,35 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.lightGray,
   },
+  chipsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.lightGray,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#f3f4f6',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  chipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  chipText: {
+    fontSize: 12,
+    color: COLORS.gray,
+    fontWeight: '600',
+  },
+  chipTextActive: {
+    color: '#fff',
+  },
   resultsText: {
     fontSize: 13,
     color: COLORS.gray,
@@ -337,10 +402,17 @@ const styles = StyleSheet.create({
   resultContent: {
     flex: 1,
   },
+  resultTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   resultTitle: {
     fontSize: 15,
     fontWeight: '600',
     color: COLORS.dark,
+    flexShrink: 1,
+    marginRight: 8,
   },
   resultSubtitle: {
     fontSize: 13,

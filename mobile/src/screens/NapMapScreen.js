@@ -8,7 +8,8 @@ import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
-import { debounce, parseCoordinate } from '../utils/helpers';
+import { debounce, parseCoordinate, formatDateTime } from '../utils/helpers';
+import StatusBadge from '../components/StatusBadge';
 
 const COLORS = {
   green: '#22c55e',
@@ -22,6 +23,13 @@ const COLORS = {
 };
 
 const RADIUS_KM = 1;
+
+const STATUS_FILTERS = [
+  { label: 'All', value: '' },
+  { label: 'In Service', value: 'In Service' },
+  { label: 'Out of Service', value: 'Defective' },
+  { label: 'Planned', value: 'Planned' },
+];
 
 const formatLatLng = (lat, lng) => {
   const latNum = parseFloat(lat);
@@ -50,6 +58,7 @@ const NapMapScreen = ({ navigation }) => {
   const [showList, setShowList] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
   const [droppedPin, setDroppedPin] = useState(null);
   const mapRef = useRef(null);
   const searchSeqRef = useRef(0);
@@ -110,7 +119,7 @@ const NapMapScreen = ({ navigation }) => {
       const seq = ++searchSeqRef.current;
       try {
         setSearching(true);
-        const response = await napsAPI.search({ q: query, limit: 100 });
+        const response = await napsAPI.search({ q: query, limit: 100, status: statusFilter || undefined });
         if (seq !== searchSeqRef.current) return;
         setSearchResults(response.naps || []);
       } catch (error) {
@@ -121,13 +130,20 @@ const NapMapScreen = ({ navigation }) => {
         }
       }
     }, 300),
-    []
+    [statusFilter]
   );
 
   const handleSearchChange = (text) => {
     setSearchQuery(text);
     setIsSearching(text.trim().length >= 2);
     debouncedSearch(text);
+  };
+
+  const handleStatusFilter = (value) => {
+    setStatusFilter(value);
+    if (searchQuery.trim().length >= 2) {
+      debouncedSearch(searchQuery);
+    }
   };
 
   const clearSearch = () => {
@@ -195,6 +211,9 @@ const NapMapScreen = ({ navigation }) => {
           <View style={styles.callout}>
             <Text style={styles.calloutTitle}>{nap.nap_id}</Text>
             <Text style={styles.calloutText}>{nap.building_served || 'N/A'}</Text>
+            <Text style={styles.calloutText}>
+              Status: {nap.naps_status || 'N/A'}
+            </Text>
             <Text style={[styles.calloutText, { color }]}>
               {nap.vacant_lines} of {nap.total_capacity} ports available
             </Text>
@@ -222,10 +241,17 @@ const NapMapScreen = ({ navigation }) => {
       >
         <View style={[styles.colorDot, { backgroundColor: color }]} />
         <View style={styles.listItemContent}>
-          <Text style={styles.listItemTitle}>{nap.nap_id}</Text>
+          <View style={styles.listItemTitleRow}>
+            <Text style={styles.listItemTitle} numberOfLines={1}>{nap.nap_id}</Text>
+            <StatusBadge status={nap.naps_status} />
+          </View>
+          <Text style={styles.listItemSubtitle} numberOfLines={1}>
+            {nap.building_served || 'N/A'}
+          </Text>
           <FieldRow label="Physical Status" value={nap.naps_status} />
           <FieldRow label="NAP Location" value={nap.location_type} />
           <FieldRow label="NAP Address" value={address} />
+          <FieldRow label="Last updated" value={formatDateTime(nap.updated_at)} />
         </View>
       </TouchableOpacity>
     );
@@ -276,6 +302,23 @@ const NapMapScreen = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Status filter chips (while searching) */}
+      {isSearching && (
+        <View style={styles.chipsRow}>
+          {STATUS_FILTERS.map((f) => (
+            <TouchableOpacity
+              key={f.value || 'all'}
+              style={[styles.chip, statusFilter === f.value && styles.chipActive]}
+              onPress={() => handleStatusFilter(f.value)}
+            >
+              <Text style={[styles.chipText, statusFilter === f.value && styles.chipTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* Pinned location banner */}
       {droppedPin && !isSearching && (
@@ -353,6 +396,7 @@ const NapMapScreen = ({ navigation }) => {
               <Text style={styles.detailTitle}>{selectedNap.nap_id}</Text>
               <Text style={styles.detailSubtitle}>{selectedNap.location_type}</Text>
             </View>
+            <StatusBadge status={selectedNap.naps_status} size="lg" />
           </View>
 
           <View style={styles.detailInfo}>
@@ -361,6 +405,8 @@ const NapMapScreen = ({ navigation }) => {
             <InfoRow label="City" value={selectedNap.city_name || 'N/A'} />
             <InfoRow label="Province" value={selectedNap.province_name || 'N/A'} />
             <InfoRow label="OLT" value={selectedNap.cabinet || 'N/A'} />
+            <InfoRow label="Status" value={selectedNap.naps_status || 'N/A'} />
+            <InfoRow label="Last updated" value={formatDateTime(selectedNap.updated_at)} />
             <InfoRow
               label="Lat / Long"
               value={formatLatLng(selectedNap.dp_nap_lat, selectedNap.dp_nap_long)}
@@ -500,6 +546,36 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  chipsRow: {
+    position: 'absolute',
+    top: 108,
+    left: 12,
+    right: 12,
+    zIndex: 20,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#f3f4f6',
+    marginRight: 6,
+  },
+  chipActive: {
+    backgroundColor: COLORS.primary,
+  },
+  chipText: {
+    fontSize: 11,
+    color: COLORS.gray,
+    fontWeight: '600',
+  },
+  chipTextActive: {
+    color: '#fff',
+  },
   pinBanner: {
     position: 'absolute',
     top: 108,
@@ -554,10 +630,17 @@ const styles = StyleSheet.create({
   listItemContent: {
     flex: 1,
   },
+  listItemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   listItemTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.dark,
+    flexShrink: 1,
+    marginRight: 8,
   },
   listItemSubtitle: {
     fontSize: 12,

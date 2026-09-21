@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
         id, nap_id, cabinet, location_type, building_served, floors_served,
         working_lines, vacant_lines, total_capacity, cfs_region,
         city_name, province_name, dp_nap_lat, dp_nap_long, 
-        naps_status, olt_id, sell_status,
+        naps_status, olt_id, sell_status, updated_at,
         CASE 
           WHEN vacant_lines = 0 THEN 'red'
           WHEN vacant_lines <= 8 THEN 'yellow'
@@ -103,7 +103,7 @@ router.get('/nearest', async (req, res) => {
           id, nap_id, cabinet, location_type, building_served, floors_served,
           working_lines, vacant_lines, total_capacity, cfs_region,
           city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
-          naps_status, olt_id, sell_status,
+          naps_status, olt_id, sell_status, updated_at,
           CASE 
             WHEN vacant_lines = 0 THEN 'red'
             WHEN vacant_lines <= 8 THEN 'yellow'
@@ -165,7 +165,7 @@ router.get('/stats/summary', async (req, res) => {
 // fallback when no nap_id matches, so ID searches never return unrelated NAPs.
 router.get('/search', async (req, res) => {
   try {
-    const { q, limit = 100 } = req.query;
+    const { q, limit = 100, status } = req.query;
 
     if (!q || q.trim().length < 2) {
       return res.status(400).json({ error: 'Search query must be at least 2 characters' });
@@ -173,6 +173,7 @@ router.get('/search', async (req, res) => {
 
     const searchTrimmed = q.trim();
     const searchTerm = `%${searchTrimmed}%`;
+    const statusFilter = status ? ' AND naps_status = $5\n' : '';
 
     // Pass 1: match on nap_id only (exact > prefix > contains)
     const idResult = await pool.query(`
@@ -180,7 +181,7 @@ router.get('/search', async (req, res) => {
         id, nap_id, cabinet, location_type, building_served, floors_served,
         working_lines, vacant_lines, total_capacity, cfs_region,
         city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
-        naps_status, olt_id, sell_status,
+        naps_status, olt_id, sell_status, updated_at,
         CASE
           WHEN vacant_lines = 0 THEN 'red'
           WHEN vacant_lines <= 8 THEN 'yellow'
@@ -195,9 +196,9 @@ router.get('/search', async (req, res) => {
       WHERE UPPER(nap_id) LIKE UPPER($3)
         AND dp_nap_lat BETWEEN 4 AND 21
         AND dp_nap_long BETWEEN 116 AND 127
-      ORDER BY relevance, nap_id
+        ${statusFilter}ORDER BY relevance, nap_id
       LIMIT $4
-    `, [searchTrimmed, `${searchTrimmed}%`, searchTerm, limit]);
+    `, status ? [searchTrimmed, `${searchTrimmed}%`, searchTerm, limit, status] : [searchTrimmed, `${searchTrimmed}%`, searchTerm, limit]);
 
     if (idResult.rows.length > 0) {
       return res.json({
@@ -212,7 +213,7 @@ router.get('/search', async (req, res) => {
         id, nap_id, cabinet, location_type, building_served, floors_served,
         working_lines, vacant_lines, total_capacity, cfs_region,
         city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
-        naps_status, olt_id, sell_status,
+        naps_status, olt_id, sell_status, updated_at,
         CASE
           WHEN vacant_lines = 0 THEN 'red'
           WHEN vacant_lines <= 8 THEN 'yellow'
@@ -228,9 +229,9 @@ router.get('/search', async (req, res) => {
       )
       AND dp_nap_lat BETWEEN 4 AND 21
       AND dp_nap_long BETWEEN 116 AND 127
-      ORDER BY nap_id
+      ${status ? ' AND naps_status = $3\n' : ''}ORDER BY nap_id
       LIMIT $2
-    `, [searchTerm, limit]);
+    `, status ? [searchTerm, limit, status] : [searchTerm, limit]);
 
     res.json({
       count: result.rows.length,
