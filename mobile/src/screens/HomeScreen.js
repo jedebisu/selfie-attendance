@@ -19,6 +19,7 @@ const HomeScreen = memo(({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [lastDataUpdate, setLastDataUpdate] = useState(null);
+  const [dataDateError, setDataDateError] = useState(false);
 
   const onShift = Boolean(todaySummary?.clock_in) && !todaySummary?.clock_out;
 
@@ -46,10 +47,11 @@ const HomeScreen = memo(({ navigation }) => {
             const dateValue = stats.nap_report_date || stats.last_data_update;
             if (dateValue) {
               setLastDataUpdate(dateValue);
+              setDataDateError(false);
               cacheNapsUpdatedAt(dateValue);
             }
           })
-          .catch(() => {});
+          .catch(() => setDataDateError(true));
       } else {
         const cached = await getCachedTodaySummary();
         if (cached) setTodaySummary(cached);
@@ -213,8 +215,13 @@ const HomeScreen = memo(({ navigation }) => {
           >
             <Text style={styles.quickButtonText}>🗺️ NAP Checking</Text>
           </TouchableOpacity>
-          <Text style={styles.dataUpdateText}>
-            Data last updated: {lastDataUpdate ? formatDateTime(lastDataUpdate) : '—'}
+          <Text style={[styles.dataUpdateText, dataDateError && !lastDataUpdate && styles.dataUpdateError]}>
+            Data last updated:{' '}
+            {lastDataUpdate
+              ? formatDateTime(lastDataUpdate)
+              : dataDateError
+                ? "(can't reach server)"
+                : '—'}
           </Text>
         </View>
       </View>
@@ -393,6 +400,10 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     marginTop: 6,
+  },
+  dataUpdateError: {
+    color: '#ef4444',
+    fontWeight: '600',
   },
 });
 

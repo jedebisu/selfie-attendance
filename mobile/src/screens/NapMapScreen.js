@@ -62,6 +62,7 @@ const NapMapScreen = ({ navigation }) => {
   const [statusFilter, setStatusFilter] = useState('');
   const [droppedPin, setDroppedPin] = useState(null);
   const [dataDate, setDataDate] = useState(null);
+  const [dataDateError, setDataDateError] = useState(false);
   const mapRef = useRef(null);
   const searchSeqRef = useRef(0);
 
@@ -70,18 +71,35 @@ const NapMapScreen = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+    const loadStats = () => {
+      napsAPI.getStats()
+        .then((stats) => {
+          if (cancelled) return;
+          const value = stats.nap_report_date || stats.last_data_update;
+          if (value) {
+            setDataDate(value);
+            setDataDateError(false);
+            cacheNapsUpdatedAt(value);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setDataDateError(true);
+        });
+    };
     getCachedNapsUpdatedAt().then((value) => {
-      if (value) setDataDate(value);
+      if (value && !cancelled) setDataDate(value);
     });
-    napsAPI.getStats()
-      .then((stats) => {
-        const value = stats.nap_report_date || stats.last_data_update;
-        if (value) {
-          setDataDate(value);
-          cacheNapsUpdatedAt(value);
-        }
-      })
-      .catch(() => {});
+    loadStats();
+    const retry = setInterval(() => {
+      if (attempts++ >= 10) { clearInterval(retry); return; }
+      loadStats();
+    }, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(retry);
+    };
   }, []);
 
   const getCurrentLocation = async () => {
@@ -311,8 +329,13 @@ const NapMapScreen = ({ navigation }) => {
                 : `${nearbyNaps.length} NAPs within ${RADIUS_KM}km`
             }
           </Text>
-          <Text style={styles.dataDateText}>
-            Data last updated: {dataDate ? formatDateTime(dataDate) : '—'}
+          <Text style={[styles.dataDateText, dataDateError && !dataDate && styles.dataDateError]}>
+            Data last updated:{' '}
+            {dataDate
+              ? formatDateTime(dataDate)
+              : dataDateError
+                ? "(can't reach server)"
+                : '—'}
           </Text>
         </View>
         <TouchableOpacity onPress={() => setShowList(!showList)} style={styles.listToggle}>
@@ -557,6 +580,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.gray,
     marginTop: 2,
+  },
+  dataDateError: {
+    color: COLORS.red,
+    fontWeight: '600',
   },
   listToggle: {
     paddingHorizontal: 10,
