@@ -9,6 +9,7 @@ import { getQueueLength } from '../services/offlineQueue';
 import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notifications';
 import { syncTrackingWithShiftState } from '../services/locationTracker';
 import { formatDateTime } from '../utils/helpers';
+import Constants from 'expo-constants';
 
 const HomeScreen = memo(({ navigation }) => {
   const { user } = useAuth();
@@ -116,6 +117,9 @@ const HomeScreen = memo(({ navigation }) => {
         <Text style={styles.greeting}>{greeting},</Text>
         <Text style={styles.greetingName}>{user?.name?.split(' ')[0] || 'User'} 👋</Text>
         <Text style={styles.date}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
+        <Text style={styles.appVersion}>
+          App version {Constants.expoConfig?.version} (build {Constants.expoConfig?.android?.versionCode} in use)
+        </Text>
         
         {!isOnline && (
           <View style={styles.offlineBadge}>
@@ -242,6 +246,11 @@ const styles = StyleSheet.create({
   date: {
     fontSize: 16,
     color: '#666',
+    marginTop: 4,
+  },
+  appVersion: {
+    fontSize: 11,
+    color: '#9ca3af',
     marginTop: 4,
   },
   offlineBadge: {

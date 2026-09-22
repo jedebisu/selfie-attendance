@@ -8,7 +8,8 @@ import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
-import { debounce, parseCoordinate } from '../utils/helpers';
+import { debounce, parseCoordinate, formatDateTime } from '../utils/helpers';
+import { getCachedNapsUpdatedAt, cacheNapsUpdatedAt } from '../services/cache';
 import StatusBadge from '../components/StatusBadge';
 
 const COLORS = {
@@ -60,11 +61,27 @@ const NapMapScreen = ({ navigation }) => {
   const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [droppedPin, setDroppedPin] = useState(null);
+  const [dataDate, setDataDate] = useState(null);
   const mapRef = useRef(null);
   const searchSeqRef = useRef(0);
 
   useEffect(() => {
     getCurrentLocation();
+  }, []);
+
+  useEffect(() => {
+    getCachedNapsUpdatedAt().then((value) => {
+      if (value) setDataDate(value);
+    });
+    napsAPI.getStats()
+      .then((stats) => {
+        const value = stats.nap_report_date || stats.last_data_update;
+        if (value) {
+          setDataDate(value);
+          cacheNapsUpdatedAt(value);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const getCurrentLocation = async () => {
@@ -293,6 +310,9 @@ const NapMapScreen = ({ navigation }) => {
                 ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km of pin`
                 : `${nearbyNaps.length} NAPs within ${RADIUS_KM}km`
             }
+          </Text>
+          <Text style={styles.dataDateText}>
+            Data last updated: {dataDate ? formatDateTime(dataDate) : '—'}
           </Text>
         </View>
         <TouchableOpacity onPress={() => setShowList(!showList)} style={styles.listToggle}>
@@ -532,6 +552,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.gray,
     fontWeight: '500',
+  },
+  dataDateText: {
+    fontSize: 10,
+    color: COLORS.gray,
+    marginTop: 2,
   },
   listToggle: {
     paddingHorizontal: 10,

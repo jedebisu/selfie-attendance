@@ -48,7 +48,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM"
       ],
-      "versionCode": 25
+      "versionCode": 26
     },
     "updates": {
       "url": "https://u.expo.dev/72936711-ce2c-4e50-bcac-9e76c80abd4c",
