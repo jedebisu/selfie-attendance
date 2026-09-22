@@ -6,6 +6,14 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
+// Date of the source "NAP Facility Summary Report" CSV, stamped by
+// regenerate-naps-export.py and committed with naps_export.csv.gz.
+let napReportDate = null;
+const napReportDatePath = path.join(__dirname, '..', 'config', 'nap_report_date.txt');
+try {
+  napReportDate = fs.readFileSync(napReportDatePath, 'utf-8').trim() || null;
+} catch (_) {}
+
 // Get all NAPs (with optional filters)
 router.get('/', async (req, res) => {
   try {
@@ -154,7 +162,7 @@ router.get('/stats/summary', async (req, res) => {
         AND dp_nap_long BETWEEN 122 AND 127
     `);
 
-    res.json(result.rows[0]);
+    res.json({ ...result.rows[0], nap_report_date: napReportDate });
   } catch (error) {
     console.error('Error fetching NAP stats:', error);
     res.status(500).json({ error: 'Failed to fetch NAP stats' });

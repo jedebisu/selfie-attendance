@@ -37,6 +37,7 @@ Output (17 columns, comma-separated, gzipped):
 """
 
 import gzip
+import os
 import re
 import sys
 
@@ -105,6 +106,23 @@ HEADERS = [
     'city_name', 'province_name', 'dp_nap_lat', 'dp_nap_long', 'naps_status',
     'olt_id', 'sell_status', 'barangay_name',
 ]
+
+
+def extract_report_date(input_path):
+    """Parse the report date from the source CSV filename.
+
+    Handles "NAP Facility Summary Report-09-20-2026 14-22.csv" (MM-DD-YYYY)
+    and YYYY-MM-DD style names. Returns 'YYYY-MM-DD' or None.
+    """
+    base = input_path.rsplit('/', 1)[-1]
+    month_day_year = re.search(r'(\d{2})[-/](\d{2})[-/](\d{4})', base)
+    if month_day_year:
+        m, d, y = month_day_year.groups()
+        return f'{y}-{m}-{d}'
+    year_month_day = re.search(r'(\d{4})[-/](\d{2})[-/](\d{2})', base)
+    if year_month_day:
+        return f'{year_month_day.group(1)}-{year_month_day.group(2)}-{year_month_day.group(3)}'
+    return None
 
 
 def main():
@@ -215,6 +233,15 @@ def main():
     print(f'  Written: {len(rows)} (unique nap_ids from {written} rows)')
     print(f'  Skipped: {skipped}')
     print(f'  Output: {output_path}')
+
+    report_date = extract_report_date(input_path)
+    if report_date:
+        date_path = os.path.join(os.path.dirname(output_path) or '.', 'nap_report_date.txt')
+        with open(date_path, 'w', encoding='utf-8') as f:
+            f.write(report_date + '\n')
+        print(f'  Report date: {report_date} -> {date_path}')
+    else:
+        print('  WARNING: could not detect report date from filename; nap_report_date.txt not updated')
 
 
 if __name__ == '__main__':

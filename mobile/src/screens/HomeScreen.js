@@ -42,9 +42,10 @@ const HomeScreen = memo(({ navigation }) => {
         });
         napsAPI.getStats()
           .then((stats) => {
-            if (stats.last_data_update) {
-              setLastDataUpdate(stats.last_data_update);
-              cacheNapsUpdatedAt(stats.last_data_update);
+            const dateValue = stats.nap_report_date || stats.last_data_update;
+            if (dateValue) {
+              setLastDataUpdate(dateValue);
+              cacheNapsUpdatedAt(dateValue);
             }
           })
           .catch(() => {});
