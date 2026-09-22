@@ -5,6 +5,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const TODAY_SUMMARY_KEY = 'cached_today_summary';
 const HISTORY_KEY = 'cached_history';
 const CACHE_TIMESTAMP_KEY = 'cache_timestamp';
+const NAPS_UPDATED_KEY = 'cached_naps_updated_at';
 
 const isCacheValid = async () => {
   try {
@@ -56,11 +57,27 @@ const getCachedHistory = async () => {
   }
 };
 
+const cacheNapsUpdatedAt = async (value) => {
+  try {
+    if (value) await AsyncStorage.setItem(NAPS_UPDATED_KEY, value);
+  } catch (error) {
+    console.error('Error caching naps updated_at:', error);
+  }
+};
+
+const getCachedNapsUpdatedAt = async () => {
+  try {
+    return await AsyncStorage.getItem(NAPS_UPDATED_KEY);
+  } catch (error) {
+    return null;
+  }
+};
+
 const clearCache = async () => {
   await AsyncStorage.removeItem(TODAY_SUMMARY_KEY);
   await AsyncStorage.removeItem(HISTORY_KEY);
   await AsyncStorage.removeItem(CACHE_TIMESTAMP_KEY);
 };
 
-export { cacheTodaySummary, getCachedTodaySummary, cacheHistory, getCachedHistory, isCacheValid, clearCache };
-export default { cacheTodaySummary, getCachedTodaySummary, cacheHistory, getCachedHistory, isCacheValid, clearCache };
+export { cacheTodaySummary, getCachedTodaySummary, cacheHistory, getCachedHistory, isCacheValid, clearCache, cacheNapsUpdatedAt, getCachedNapsUpdatedAt };
+export default { cacheTodaySummary, getCachedTodaySummary, cacheHistory, getCachedHistory, isCacheValid, clearCache, cacheNapsUpdatedAt, getCachedNapsUpdatedAt };

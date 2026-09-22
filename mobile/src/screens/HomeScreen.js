@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl } 
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { attendanceAPI, napsAPI } from '../services/api';
-import { getCachedTodaySummary, cacheTodaySummary } from '../services/cache';
+import { getCachedTodaySummary, cacheTodaySummary, cacheNapsUpdatedAt, getCachedNapsUpdatedAt } from '../services/cache';
 import { checkConnection } from '../services/network';
 import { getQueueLength } from '../services/offlineQueue';
 import { scheduleClockOutReminder, cancelAllReminders } from '../utils/notifications';
@@ -37,12 +37,24 @@ const HomeScreen = memo(({ navigation }) => {
         setTodaySummary(summary);
         await cacheTodaySummary(summary);
 
+        getCachedNapsUpdatedAt().then((value) => {
+          if (value) setLastDataUpdate(value);
+        });
         napsAPI.getStats()
-          .then((stats) => setLastDataUpdate(stats.last_data_update))
+          .then((stats) => {
+            if (stats.last_data_update) {
+              setLastDataUpdate(stats.last_data_update);
+              cacheNapsUpdatedAt(stats.last_data_update);
+            }
+          })
           .catch(() => {});
       } else {
         const cached = await getCachedTodaySummary();
         if (cached) setTodaySummary(cached);
+
+        getCachedNapsUpdatedAt().then((value) => {
+          if (value) setLastDataUpdate(value);
+        });
       }
 
       const queueLen = await getQueueLength();
