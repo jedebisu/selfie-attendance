@@ -3,11 +3,12 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, 
   ActivityIndicator, Alert, FlatList 
 } from 'react-native';
-import MapView, { Marker, Callout, Circle } from 'react-native-maps';
+import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
+import { fetchRoute } from '../services/routing';
 import { debounce, parseCoordinate, formatDateTime } from '../utils/helpers';
 import { getCachedNapsUpdatedAt, cacheNapsUpdatedAt } from '../services/cache';
 import StatusBadge from '../components/StatusBadge';
@@ -61,6 +62,9 @@ const NapMapScreen = ({ navigation }) => {
   const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [droppedPin, setDroppedPin] = useState(null);
+  const [routePoints, setRoutePoints] = useState([]);
+  const [routeDistanceKm, setRouteDistanceKm] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
   const [dataDate, setDataDate] = useState(null);
   const [dataDateError, setDataDateError] = useState(false);
   const mapRef = useRef(null);
@@ -207,6 +211,38 @@ const NapMapScreen = ({ navigation }) => {
       await fetchNearbyNaps(location.latitude, location.longitude);
     }
   };
+
+  useEffect(() => {
+    const dest = selectedNap ? parseCoordinate(selectedNap.dp_nap_lat, selectedNap.dp_nap_long) : null;
+    const origin = droppedPin || location;
+    if (!dest || !origin) {
+      setRoutePoints([]);
+      setRouteDistanceKm(null);
+      setRouteLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRouteLoading(true);
+    fetchRoute(origin, dest)
+      .then((route) => {
+        if (cancelled) return;
+        setRoutePoints(route.points);
+        setRouteDistanceKm(route.distanceKm);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRoutePoints([]);
+        setRouteDistanceKm(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRouteLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedNap, droppedPin, location]);
 
   const handleMapLongPress = useCallback(async (e) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
@@ -397,6 +433,15 @@ const NapMapScreen = ({ navigation }) => {
           <Marker coordinate={droppedPin} pinColor={COLORS.blue} />
         )}
 
+        {/* Active route along roads from current location / pin to selected NAP */}
+        {routePoints.length > 0 && (
+          <Polyline
+            coordinates={routePoints}
+            strokeColor={COLORS.blue}
+            strokeWidth={4}
+          />
+        )}
+
         {/* NAP markers */}
         {displayNaps.map(renderNapMarker)}
       </MapView>
@@ -452,7 +497,7 @@ const NapMapScreen = ({ navigation }) => {
               label="Lat / Long"
               value={formatLatLng(selectedNap.dp_nap_lat, selectedNap.dp_nap_long)}
             />
-            {selectedNap.distance_km !== undefined && (
+            {selectedNap.distance_km !== undefined && !routeLoading && routeDistanceKm === null && (
               <InfoRow 
                 label="Distance" 
                 value={
@@ -460,6 +505,17 @@ const NapMapScreen = ({ navigation }) => {
                     ? `${Math.round(selectedNap.distance_km * 1000)}m`
                     : `${selectedNap.distance_km.toFixed(2)}km`
                 } 
+              />
+            )}
+            {routeLoading && <InfoRow label="Distance" value="Measuring along roads..." />}
+            {!routeLoading && routeDistanceKm !== null && routeDistanceKm !== undefined && (
+              <InfoRow
+                label="Distance (via roads)"
+                value={
+                  routeDistanceKm < 1
+                    ? `${Math.round(routeDistanceKm * 1000)}m`
+                    : `${routeDistanceKm.toFixed(2)}km`
+                }
               />
             )}
           </View>
