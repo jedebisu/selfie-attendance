@@ -57,6 +57,7 @@ const NapMapScreen = ({ navigation }) => {
   const [searching, setSearching] = useState(false);
   const [location, setLocation] = useState(null);
   const [selectedNap, setSelectedNap] = useState(null);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [showList, setShowList] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -192,6 +193,11 @@ const NapMapScreen = ({ navigation }) => {
     setIsSearching(false);
   };
 
+  const selectNap = useCallback((nap) => {
+    setSelectedNap(nap);
+    setDetailsExpanded(false);
+  }, []);
+
   const flyToNap = (nap) => {
     if (!mapRef.current) return;
     const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
@@ -202,7 +208,7 @@ const NapMapScreen = ({ navigation }) => {
       longitudeDelta: 0.005,
     };
     mapRef.current.animateToRegion(region, 500);
-    setSelectedNap(nap);
+    selectNap(nap);
     setShowList(false);
   };
 
@@ -276,9 +282,9 @@ const NapMapScreen = ({ navigation }) => {
         key={nap.id}
         coordinate={c}
         pinColor={color}
-        onPress={() => setSelectedNap(nap)}
+        onPress={() => selectNap(nap)}
       >
-        <Callout onPress={() => setSelectedNap(nap)}>
+        <Callout onPress={() => selectNap(nap)}>
           <View style={styles.callout}>
             <Text style={styles.calloutTitle}>{nap.nap_id}</Text>
             <Text style={styles.calloutText}>{nap.building_served || 'N/A'}</Text>
@@ -326,6 +332,14 @@ const NapMapScreen = ({ navigation }) => {
       </TouchableOpacity>
     );
   };
+
+  const selectedDistanceText = selectedNap
+    ? !routeLoading && routeDistanceKm !== null && routeDistanceKm !== undefined
+      ? (routeDistanceKm < 1 ? `${Math.round(routeDistanceKm * 1000)}m` : `${routeDistanceKm.toFixed(2)}km`)
+      : selectedNap.distance_km !== undefined
+        ? (selectedNap.distance_km < 1 ? `${Math.round(selectedNap.distance_km * 1000)}m` : `${selectedNap.distance_km.toFixed(2)}km`)
+        : null
+    : null;
 
   const displayNaps = isSearching ? searchResults : nearbyNaps;
   const initialRegion = location 
@@ -467,8 +481,26 @@ const NapMapScreen = ({ navigation }) => {
         </View>
       )}
 
-      {/* Selected NAP Detail */}
-      {selectedNap && (
+      {/* Selected NAP detail */}
+      {selectedNap && !detailsExpanded && (
+        <TouchableOpacity
+          style={styles.collapsedBar}
+          onPress={() => setDetailsExpanded(true)}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.statusDot, { backgroundColor: getMarkerColor(selectedNap.vacant_lines) }]} />
+          <View style={styles.collapsedInfo}>
+            <Text style={styles.collapsedTitle} numberOfLines={1}>{selectedNap.nap_id}</Text>
+            <Text style={styles.collapsedSub} numberOfLines={1}>
+              {[selectedNap.building_served, selectedDistanceText].filter(Boolean).join(' · ') || 'N/A'}
+            </Text>
+          </View>
+          <StatusBadge status={selectedNap.naps_status} />
+          <Text style={styles.expandText}>▲ Details</Text>
+        </TouchableOpacity>
+      )}
+
+      {selectedNap && detailsExpanded && (
         <View style={styles.detailPanel}>
           <TouchableOpacity 
             style={styles.closeButton}
@@ -525,6 +557,13 @@ const NapMapScreen = ({ navigation }) => {
             <PortBox label="Working" value={selectedNap.working_lines} color={COLORS.green} />
             <PortBox label="Available" value={selectedNap.vacant_lines} color={getMarkerColor(selectedNap.vacant_lines)} />
           </View>
+
+          <TouchableOpacity
+            onPress={() => setDetailsExpanded(false)}
+            style={styles.collapseBtn}
+          >
+            <Text style={styles.collapseBtnText}>▼ Show less (see map)</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -807,6 +846,60 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 10,
+  },
+  collapsedBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  collapsedInfo: {
+    flex: 1,
+    marginLeft: 10,
+    marginRight: 8,
+  },
+  collapsedTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.dark,
+  },
+  collapsedSub: {
+    fontSize: 12,
+    color: COLORS.gray,
+    marginTop: 2,
+  },
+  expandText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.blue,
+    marginLeft: 8,
+    paddingVertical: 6,
+    paddingLeft: 8,
+  },
+  collapseBtn: {
+    alignSelf: 'center',
+    marginTop: 14,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  collapseBtnText: {
+    fontSize: 12,
+    color: COLORS.gray,
+    fontWeight: '600',
   },
   closeButton: {
     position: 'absolute',
