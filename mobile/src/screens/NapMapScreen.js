@@ -539,10 +539,10 @@ const NapMapScreen = ({ navigation }) => {
                 } 
               />
             )}
-            {routeLoading && <InfoRow label="Distance" value="Measuring along roads..." />}
+            {routeLoading && <InfoRow label="Distance" value="Measuring walking route..." />}
             {!routeLoading && routeDistanceKm !== null && routeDistanceKm !== undefined && (
               <InfoRow
-                label="Distance (via roads)"
+                label="Distance (walking)"
                 value={
                   routeDistanceKm < 1
                     ? `${Math.round(routeDistanceKm * 1000)}m`

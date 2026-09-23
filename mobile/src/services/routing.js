@@ -33,7 +33,7 @@ const decodePolyline = (str) => {
   return coords;
 };
 
-const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
+const OSRM_BASE = 'https://router.project-osrm.org/route/v1/foot';
 
 const fetchRoute = async (origin, destination) => {
   const url =
