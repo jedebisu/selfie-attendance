@@ -3,13 +3,11 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, 
   ActivityIndicator, Alert, FlatList 
 } from 'react-native';
-import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
+import MapView, { Marker, Callout, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
-import { Linking } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
-import { fetchRoute } from '../services/routing';
 import { debounce, parseCoordinate, formatDateTime } from '../utils/helpers';
 import { getCachedNapsUpdatedAt, cacheNapsUpdatedAt } from '../services/cache';
 import StatusBadge from '../components/StatusBadge';
@@ -63,10 +61,6 @@ const NapMapScreen = ({ navigation }) => {
   const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [droppedPin, setDroppedPin] = useState(null);
-  const [routePoints, setRoutePoints] = useState([]);
-  const [routeDistanceKm, setRouteDistanceKm] = useState(null);
-  const [routeDurationMin, setRouteDurationMin] = useState(null);
-  const [routeLoading, setRouteLoading] = useState(false);
   const [dataDate, setDataDate] = useState(null);
   const [dataDateError, setDataDateError] = useState(false);
   const mapRef = useRef(null);
@@ -212,51 +206,6 @@ const NapMapScreen = ({ navigation }) => {
     if (location) {
       await fetchNearbyNaps(location.latitude, location.longitude);
     }
-  };
-
-  useEffect(() => {
-    const dest = selectedNap ? parseCoordinate(selectedNap.dp_nap_lat, selectedNap.dp_nap_long) : null;
-    const origin = droppedPin || location;
-    if (!dest || !origin) {
-      setRoutePoints([]);
-      setRouteDistanceKm(null);
-      setRouteDurationMin(null);
-      setRouteLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setRouteLoading(true);
-    fetchRoute(origin, dest)
-      .then((route) => {
-        if (cancelled) return;
-        setRoutePoints(route.points);
-        setRouteDistanceKm(route.distanceKm);
-        setRouteDurationMin(route.durationMin);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRoutePoints([]);
-        setRouteDistanceKm(null);
-        setRouteDurationMin(null);
-      })
-      .finally(() => {
-        if (!cancelled) setRouteLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedNap, droppedPin, location]);
-
-  const openDirections = () => {
-    const dest = selectedNap ? parseCoordinate(selectedNap.dp_nap_lat, selectedNap.dp_nap_long) : null;
-    const origin = droppedPin || location;
-    if (!dest || !origin) return;
-    const url =
-      `https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}` +
-      `&destination=${dest.latitude},${dest.longitude}&travelmode=driving`;
-    Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open Google Maps'));
   };
 
   const handleMapLongPress = useCallback(async (e) => {
@@ -448,15 +397,6 @@ const NapMapScreen = ({ navigation }) => {
           <Marker coordinate={droppedPin} pinColor={COLORS.blue} />
         )}
 
-        {/* Active route from current location / pin to selected NAP */}
-        {routePoints.length > 0 && (
-          <Polyline
-            coordinates={routePoints}
-            strokeColor={COLORS.blue}
-            strokeWidth={4}
-          />
-        )}
-
         {/* NAP markers */}
         {displayNaps.map(renderNapMarker)}
       </MapView>
@@ -514,19 +454,12 @@ const NapMapScreen = ({ navigation }) => {
             />
             {selectedNap.distance_km !== undefined && (
               <InfoRow 
-                label="Distance (straight)" 
+                label="Distance" 
                 value={
                   selectedNap.distance_km < 1 
                     ? `${Math.round(selectedNap.distance_km * 1000)}m`
                     : `${selectedNap.distance_km.toFixed(2)}km`
                 } 
-              />
-            )}
-            {routeLoading && <InfoRow label="Route" value="Calculating road route..." />}
-            {!routeLoading && routeDistanceKm !== null && routeDistanceKm !== undefined && (
-              <InfoRow
-                label="Distance (road)"
-                value={`${routeDistanceKm < 1 ? `${Math.round(routeDistanceKm * 1000)}m` : `${routeDistanceKm.toFixed(2)}km`}${routeDurationMin !== null && routeDurationMin !== undefined ? ` · ~${routeDurationMin} min drive` : ''}`}
               />
             )}
           </View>
@@ -536,10 +469,6 @@ const NapMapScreen = ({ navigation }) => {
             <PortBox label="Working" value={selectedNap.working_lines} color={COLORS.green} />
             <PortBox label="Available" value={selectedNap.vacant_lines} color={getMarkerColor(selectedNap.vacant_lines)} />
           </View>
-
-          <TouchableOpacity onPress={openDirections} style={styles.navigateButton}>
-            <Text style={styles.navigateButtonText}>🧭 Navigate (Google Maps)</Text>
-          </TouchableOpacity>
         </View>
       )}
 
@@ -901,18 +830,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.gray,
     marginTop: 4,
-  },
-  navigateButton: {
-    marginTop: 16,
-    backgroundColor: COLORS.blue,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  navigateButtonText: {
-    fontSize: 15,
-    color: '#fff',
-    fontWeight: '700',
   },
   loadingOverlay: {
     position: 'absolute',
