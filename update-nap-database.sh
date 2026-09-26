@@ -66,10 +66,10 @@ CREATE INDEX nap_stage_nap_id_idx ON nap_stage (nap_id);
 SELECT 'stage_rows=' || COUNT(*) FROM nap_stage;
 SQL
 
-TOTAL="$(cd "$SCRIPT_DIR/server" && "$PSQL" -A "$DB_URL" -c "SELECT COUNT(*) FROM nap_stage;" 2>/dev/null | head -1 | tr -d '[:space:]')"
+TOTAL="$(cd "$SCRIPT_DIR/server" && "$PSQL" -At "$DB_URL" -c "SELECT COUNT(*) FROM nap_stage;" 2>/dev/null | head -1 | tr -d '[:space:]')"
 echo "  Source rows: ${TOTAL:-0}"
 
-BEFORE="$(cd "$SCRIPT_DIR/server" && "$PSQL" -A "$DB_URL" -c "SELECT COUNT(*) FROM naps;" 2>/dev/null | head -1 | tr -d '[:space:]')"
+BEFORE="$(cd "$SCRIPT_DIR/server" && "$PSQL" -At "$DB_URL" -c "SELECT COUNT(*) FROM naps;" 2>/dev/null | head -1 | tr -d '[:space:]')"
 echo "  naps rows before: ${BEFORE:-0}"
 
 echo "  Widening barangay column (safe if already done)..."
@@ -100,7 +100,7 @@ ON CONFLICT (nap_id) DO UPDATE SET
 DROP TABLE IF EXISTS nap_stage;
 SQL
 
-AFTER="$(cd "$SCRIPT_DIR/server" && "$PSQL" -A "$DB_URL" -c "SELECT COUNT(*) FROM naps;" 2>/dev/null | head -1 | tr -d '[:space:]')"
+AFTER="$(cd "$SCRIPT_DIR/server" && "$PSQL" -At "$DB_URL" -c "SELECT COUNT(*) FROM naps;" 2>/dev/null | head -1 | tr -d '[:space:]')"
 echo "  naps rows after:  ${AFTER:-0}"
 
 echo ""
