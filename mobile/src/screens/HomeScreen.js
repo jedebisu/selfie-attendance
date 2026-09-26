@@ -120,7 +120,7 @@ const HomeScreen = memo(({ navigation }) => {
         <Text style={styles.greetingName}>{user?.name?.split(' ')[0] || 'User'} 👋</Text>
         <Text style={styles.date}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
         <Text style={styles.appVersion}>
-          App version {Constants.expoConfig?.version} (build {Constants.expoConfig?.android?.versionCode} in use)
+          App version {Constants.nativeApplicationVersion || Constants.expoConfig?.version} (build {Constants.nativeBuildVersion || Constants.expoConfig?.android?.versionCode})
         </Text>
         
         {!isOnline && (
