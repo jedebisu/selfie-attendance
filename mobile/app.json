@@ -48,7 +48,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM"
       ],
-      "versionCode": 33
+      "versionCode": 34
     },
     "plugins": [],
     "extra": {

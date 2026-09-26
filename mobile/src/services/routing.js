@@ -1,4 +1,4 @@
-const decodePolyline = (str) => {
+const decodePolyline = (str, precision = 1e6) => {
   const coords = [];
   let index = 0;
   let lat = 0;
@@ -27,37 +27,52 @@ const decodePolyline = (str) => {
     const dLng = (result & 1) !== 0 ? ~(result >> 1) : (result >> 1);
     lng += dLng;
 
-    coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+    coords.push({ latitude: lat / precision, longitude: lng / precision });
   }
 
   return coords;
 };
 
-const OSRM_BASE = 'https://router.project-osrm.org/route/v1/foot';
+const VALHALLA_ENDPOINTS = [
+  'https://valhalla1.openstreetmap.de/route',
+  'https://valhalla2.openstreetmap.de/route',
+];
 
 const fetchRoute = async (origin, destination) => {
-  const url =
-    `${OSRM_BASE}/${origin.longitude},${origin.latitude};` +
-    `${destination.longitude},${destination.latitude}` +
-    '?overview=full&geometries=polyline';
+  const body = {
+    locations: [
+      { lon: origin.longitude, lat: origin.latitude },
+      { lon: destination.longitude, lat: destination.latitude },
+    ],
+    costing: 'pedestrian',
+    units: 'kilometers',
+  };
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
-
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    const data = await response.json();
-    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
-      throw new Error('No route found');
+  for (const url of VALHALLA_ENDPOINTS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      if (!data.trip || !data.trip.legs || data.trip.legs.length === 0) continue;
+      const leg = data.trip.legs[0];
+      return {
+        points: decodePolyline(leg.shape, 1e6),
+        distanceKm: data.trip.summary.length,
+        durationSec: data.trip.summary.time,
+      };
+    } catch {
+    } finally {
+      clearTimeout(timer);
     }
-    const route = data.routes[0];
-    return {
-      points: decodePolyline(route.geometry),
-      distanceKm: route.distance / 1000,
-    };
-  } finally {
-    clearTimeout(timer);
   }
+  throw new Error('No route found');
 };
 
 export { fetchRoute, decodePolyline };
