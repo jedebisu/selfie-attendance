@@ -34,9 +34,10 @@ const Login = () => {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <img src="/logo.png" alt="EBISU" className="login-logo" />
-          <h1>EBISU T&A</h1>
-          <p>Time & Attendance Dashboard</p>
+          <img src="/logo.png" alt="EWMS — EBISU Workforce Management System" className="login-logo" />
+          <h1>EWMS</h1>
+          <p>EBISU Workforce Management System</p>
+          <span className="login-subtitle">Employee Attendance &amp; Workforce Management</span>
         </div>
         
         <form onSubmit={handleSubmit}>

@@ -29,8 +29,11 @@ const Layout = () => {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <img src="/logo.png" alt="EBISU" className="sidebar-logo" />
-          <h2>EBISU T&A</h2>
+          <img src="/logo.png" alt="EWMS" className="sidebar-logo" />
+          <div className="sidebar-brand">
+            <h2>EWMS</h2>
+            <span className="sidebar-brand-sub">EBISU Workforce Management System</span>
+          </div>
         </div>
 
         <nav className="sidebar-nav">

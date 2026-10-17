@@ -76,7 +76,7 @@ const Dashboard = () => {
       <div className="page-header">
         <div>
           <h1>Dashboard</h1>
-          <p className="subtitle">{format(new Date(), 'EEEE, MMMM dd, yyyy')}</p>
+          <p className="subtitle">Welcome to EWMS · {format(new Date(), 'EEEE, MMMM dd, yyyy')}</p>
         </div>
       </div>
 
@@ -126,11 +126,11 @@ const Dashboard = () => {
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                   <YAxis hide />
                   <Tooltip
-                    contentStyle={{ background: '#1a1d23', border: 'none', borderRadius: 8, fontSize: 12 }}
+                    contentStyle={{ background: 'var(--primary)', border: 'none', borderRadius: 8, fontSize: 12 }}
                     labelStyle={{ color: '#ccc' }}
                     formatter={(value) => [`${value}%`, 'Attendance']}
                   />
-                  <Area type="monotone" dataKey="attendance_rate" stroke="#c8956c" fill="#c8956c" fillOpacity={0.2} />
+                  <Area type="monotone" dataKey="attendance_rate" stroke="#0072CE" fill="#0072CE" fillOpacity={0.2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

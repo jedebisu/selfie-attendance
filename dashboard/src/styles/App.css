@@ -1,17 +1,18 @@
 :root {
-  --primary: #1a1d23;
-  --primary-light: #2d3039;
-  --accent: #c8956c;
-  --accent-light: #e8c9a8;
+  /* EBISU brand palette — light blue & white with navy accents */
+  --primary: #003B70;
+  --primary-light: #00569c;
+  --accent: #0072CE;
+  --accent-light: #A8DDF5;
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --bg: #f0f2f5;
+  --bg: #F2F8FD;
   --surface: #ffffff;
-  --border: #e5e7eb;
-  --text-primary: #1a1d23;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
+  --border: #DCE7F2;
+  --text-primary: #172B4D;
+  --text-secondary: #536579;
+  --text-muted: #7A8AA0;
   --sidebar-width: 260px;
   --radius: 16px;
   --radius-sm: 10px;
@@ -55,6 +56,19 @@ body {
   font-weight: 700;
   color: #fff;
   letter-spacing: 0.5px;
+}
+
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sidebar-brand-sub {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.2px;
+  line-height: 1.25;
 }
 
 .sidebar-logo {
@@ -326,8 +340,8 @@ body {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   background: var(--primary);
   background-image:
-    radial-gradient(ellipse at 20% 50%, rgba(200,149,108,0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(200,149,108,0.1) 0%, transparent 40%);
+    radial-gradient(ellipse at 20% 50%, rgba(0,114,206,0.28) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(0,184,217,0.18) 0%, transparent 40%);
 }
 
 .login-card {
@@ -338,8 +352,9 @@ body {
 
 .login-header { text-align: center; margin-bottom: 36px; }
 .login-logo { width: 72px; height: 72px; border-radius: 18px; margin-bottom: 16px; }
-.login-header h1 { color: var(--text-primary); margin: 0 0 6px; font-size: 24px; letter-spacing: -0.5px; }
-.login-header p { color: var(--text-muted); font-size: 14px; }
+.login-header h1 { color: var(--primary); margin: 0 0 6px; font-size: 26px; font-weight: 800; letter-spacing: 0.5px; }
+.login-header p { color: var(--text-secondary); font-size: 14px; font-weight: 500; }
+.login-subtitle { display: block; color: var(--text-muted); font-size: 12.5px; margin-top: 6px; }
 
 /* ========== Map ========== */
 .map-card { height: calc(100vh - 200px); }
@@ -477,7 +492,7 @@ body {
 .chart-card h3 {
   font-size: 16px;
   font-weight: 600;
-  color: #1a1d23;
+  color: var(--text-primary);
   margin: 0 0 16px 0;
 }
 .chart-card.full-width {
@@ -488,7 +503,7 @@ body {
   min-height: 250px;
 }
 .chart-tooltip {
-  background: #1a1d23;
+  background: var(--primary);
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 13px;
@@ -513,7 +528,7 @@ body {
 }
 @media (max-width: 768px) {
   .sidebar { width: 60px; }
-  .sidebar-header h2, .nav-item span, .user-details, .sidebar-footer .logout-btn { display: none; }
+  .sidebar-header h2, .sidebar-brand, .nav-item span, .user-details, .sidebar-footer .logout-btn { display: none; }
   .sidebar-header { justify-content: center; padding: 20px 0; }
   .nav-item { justify-content: center; padding: 12px; }
   .main-content { margin-left: 60px; padding: 20px; }

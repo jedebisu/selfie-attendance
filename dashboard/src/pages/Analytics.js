@@ -4,7 +4,7 @@ import { analyticsAPI } from '../services/api';
 import { BarChart3, TrendingUp, Clock, Calendar } from 'lucide-react';
 
 const COLORS = {
-  primary: '#c8956c',
+  primary: '#0072CE',
   success: '#22c55e',
   warning: '#f59e0b',
   danger: '#ef4444',

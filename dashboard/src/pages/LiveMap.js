@@ -88,7 +88,7 @@ const formatDistance = (km) => {
 const toGpx = (pings, events, userName) => {
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<gpx version="1.1" creator="Selfie Attendance"',
+    '<gpx version="1.1" creator="EWMS — EBISU Workforce Management System"',
     '  xmlns="http://www.topografix.com/GPX/1/1"',
     '  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
     '  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">',
@@ -555,7 +555,7 @@ const headerBtnStyle = {
 
 const trailBtnStyle = {
   marginTop: 8, padding: '6px 12px', borderRadius: 6, border: 'none',
-  background: '#c8956c', color: '#fff', cursor: 'pointer', fontSize: 13,
+  background: '#0072CE', color: '#fff', cursor: 'pointer', fontSize: 13,
 };
 
 export default LiveMap;
