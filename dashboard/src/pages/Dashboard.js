@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { attendanceAPI, analyticsAPI, photoUrl } from '../services/api';
+import { attendanceAPI, analyticsAPI } from '../services/api';
+import AttendancePhoto from '../components/AttendancePhoto';
 import { format } from 'date-fns';
 import { Users, Clock, CheckCircle, AlertCircle, TrendingUp } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -197,9 +198,9 @@ const Dashboard = () => {
                       {record.status === 'clock_in' ? 'Clocked in' : 'Clocked out'} at {formatTime(record.timestamp)}
                     </span>
                   </div>
-                  <img 
-                    src={photoUrl(record.photo_url)} 
-                    alt="" 
+                  <AttendancePhoto
+                    url={record.photo_url}
+                    alt=""
                     className="activity-photo"
                   />
                 </div>

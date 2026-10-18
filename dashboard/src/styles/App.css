@@ -205,6 +205,25 @@ body {
   width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover;
 }
 
+/* Photo placeholder — replaces the browser broken-image icon for records
+   without a photo (e.g. auto clock-out) or whose file fails to load */
+.photo-placeholder {
+  flex-shrink: 0;
+  background: #f3f4f6; border: 1px dashed #d1d5db; border-radius: var(--radius-sm);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: #9ca3af; font-size: 9px;
+}
+.photo-placeholder svg { width: 16px; height: 16px; }
+.photo-placeholder.table-photo,
+.photo-placeholder.activity-photo { width: 44px; height: 44px; }
+.photo-placeholder.activity-photo { width: 40px; height: 40px; }
+.photo-placeholder.modal-photo { width: 280px; height: 280px; font-size: 12px; gap: 6px; }
+.photo-placeholder.modal-photo svg { width: 48px; height: 48px; }
+.photo-placeholder.popup-photo {
+  width: 140px; height: 100px; margin-bottom: 8px; font-size: 12px; gap: 4px;
+}
+.photo-placeholder.popup-photo svg { width: 40px; height: 40px; }
+
 .employee-cell { display: flex; align-items: center; gap: 10px; }
 .employee-cell .avatar {
   width: 34px; height: 34px; border-radius: 10px;

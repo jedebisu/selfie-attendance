@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { attendanceAPI, exportAPI, photoUrl } from '../services/api';
+import { attendanceAPI, exportAPI } from '../services/api';
+import AttendancePhoto from '../components/AttendancePhoto';
 import { format } from 'date-fns';
 import { Download, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -149,8 +150,8 @@ const Attendance = () => {
                 {records.map((record) => (
                   <tr key={record.id}>
                     <td>
-                      <img 
-                        src={photoUrl(record.photo_url)}
+                      <AttendancePhoto
+                        url={record.photo_url}
                         alt=""
                         className="table-photo"
                       />
@@ -220,11 +221,11 @@ const Attendance = () => {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setSelectedRecord(null)}>×</button>
             <div className="modal-content">
-              <img 
-                src={photoUrl(selectedRecord.photo_url)}
-                alt="Attendance"
-                className="modal-photo"
-              />
+                <AttendancePhoto
+                  url={selectedRecord.photo_url}
+                  alt=""
+                  className="modal-photo"
+                />
               <div className="modal-details">
                 <h3>{selectedRecord.user_name}</h3>
                 <p><strong>Employee ID:</strong> {selectedRecord.employee_id}</p>
