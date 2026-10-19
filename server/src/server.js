@@ -12,9 +12,17 @@ const exportRoutes = require('./routes/export');
 const analyticsRoutes = require('./routes/analytics');
 const napsRoutes = require('./routes/naps');
 const locationRoutes = require('./routes/location');
+const workOrderImportRoutes = require('./routes/workOrderImport');
+const workOrdersRoutes = require('./routes/workorders');
+const dispatchRoutes = require('./routes/dispatch');
+const dispositionRoutes = require('./routes/disposition');
+const productivityRoutes = require('./routes/productivity');
+const syncRoutes = require('./routes/sync');
+const { createWorkOrderTables } = require('./config/migrateWorkOrders');
 const { scheduleBackups } = require('./utils/backup');
 const { schedulePurge } = require('./utils/purge');
 const { scheduleAutoClockOut } = require('./utils/autoClockOut');
+const { scheduleFsmSync } = require('./utils/fsmSync');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -39,6 +47,14 @@ app.use('/api/export', exportRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/naps', napsRoutes);
 app.use('/api/location', locationRoutes);
+// Work order dispatch system. The import router (static paths) is mounted
+// before the main router so /import/* and /export are not captured by /:id.
+app.use('/api/workorders', workOrderImportRoutes);
+app.use('/api/workorders', workOrdersRoutes);
+app.use('/api/dispatch', dispatchRoutes);
+app.use('/api/disposition', dispositionRoutes);
+app.use('/api/productivity', productivityRoutes);
+app.use('/api/sync', syncRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -236,6 +252,11 @@ const server = app.listen(PORT, async () => {
   // Startup tasks
   await cleanupSessions();
   await ensureTestUsers();
+  try {
+    await createWorkOrderTables();
+  } catch (error) {
+    console.error('Work order table init failed:', error.message);
+  }
   importNapsIfNeeded(); // fire-and-forget, runs in background
   
   // Periodic session cleanup every hour
@@ -251,6 +272,10 @@ const server = app.listen(PORT, async () => {
 
   // Auto clock-out employees who exceeded MAX_HOURS without clocking out
   scheduleAutoClockOut();
+
+  // Globe FSM ingestion (folder / SFTP / HTTP export pickup). No-op unless
+  // FSM_SYNC_ENABLED=true, so deployments without FSM credentials stay inert.
+  scheduleFsmSync();
 });
 
 // Graceful shutdown

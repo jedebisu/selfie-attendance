@@ -1,7 +1,14 @@
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET environment variable is required in production');
+  }
+  console.error('WARNING: JWT_SECRET not set; using an insecure development secret');
+}
+const ACTIVE_JWT_SECRET = JWT_SECRET || 'dev-only-insecure-secret';
 
 const authenticateToken = async (req, res, next) => {
   try {
@@ -13,7 +20,7 @@ const authenticateToken = async (req, res, next) => {
     }
 
     // Verify JWT
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, ACTIVE_JWT_SECRET);
 
     // Check if session exists and is valid
     const sessionResult = await pool.query(
@@ -57,4 +64,27 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticateToken, requireAdmin };
+// Attach req.user when a valid token is present, but never block the request.
+// Used by dispatch routes so the tool works without login while still
+// recording the actor when authentication is available.
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return next();
+
+    const decoded = jwt.verify(token, ACTIVE_JWT_SECRET);
+    const userResult = await pool.query(
+      'SELECT id, employee_id, name, is_active, is_admin, role FROM users WHERE id = $1',
+      [decoded.userId]
+    );
+    if (userResult.rows.length > 0 && userResult.rows[0].is_active) {
+      req.user = userResult.rows[0];
+    }
+  } catch (_) {
+    // Ignore invalid tokens in optional mode.
+  }
+  next();
+};
+
+module.exports = { authenticateToken, requireAdmin, optionalAuth };

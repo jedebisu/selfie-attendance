@@ -18,6 +18,25 @@ services:
         value: "selfie-attendance-prod-jwt-secret-2024"
       - key: DB_SSL
         value: true
+      - key: MAX_FILE_SIZE
+        value: "62914560"
+      # Globe FSM sync (fsmSync.js). Leave disabled until Globe provides an
+      # authorized delivery path (SFTP drop / static export URL / API creds).
+      - key: FSM_SYNC_ENABLED
+        value: "false"
+      - key: FSM_SYNC_MODE
+        value: "folder"
+      - key: FSM_SYNC_FOLDER
+        value: ""
+      - key: FSM_SYNC_INTERVAL_MIN
+        value: "30"
+      - key: FSM_SFTP_HOST
+        value: ""
+      - key: FSM_SFTP_USERNAME
+        value: ""
+      - key: FSM_SFTP_PASSWORD
+        sync: false
+        value: ""
 
 databases:
   - name: selfie-attendance-db

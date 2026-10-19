@@ -90,7 +90,7 @@ router.get('/', async (req, res) => {
 // Get nearest NAPs to a location
 router.get('/nearest', async (req, res) => {
   try {
-    const { lat, lng, radius = 1, limit = 500 } = req.query;
+    const { lat, lng, radius = 1, limit = 1000 } = req.query;
 
     if (!lat || !lng) {
       return res.status(400).json({ error: 'lat and lng are required' });
