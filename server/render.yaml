@@ -20,6 +20,11 @@ services:
         value: true
       - key: MAX_FILE_SIZE
         value: "62914560"
+      # Master switch for the destructive "Clear All Work Orders" action.
+      # Still gated behind admin auth + typing "CLEAR ALL WORK ORDERS" exactly.
+      # Nightly Cloudinary backups (last 14) are the recovery path if abused.
+      - key: ALLOW_CLEAR_ALL
+        value: "1"
       # Globe FSM sync (fsmSync.js). Leave disabled until Globe provides an
       # authorized delivery path (SFTP drop / static export URL / API creds).
       - key: FSM_SYNC_ENABLED
