@@ -11,6 +11,7 @@ const leaveRoutes = require('./routes/leave');
 const exportRoutes = require('./routes/export');
 const analyticsRoutes = require('./routes/analytics');
 const napsRoutes = require('./routes/naps');
+const napCheckRoutes = require('./routes/napcheck');
 const locationRoutes = require('./routes/location');
 const workOrderImportRoutes = require('./routes/workOrderImport');
 const workOrdersRoutes = require('./routes/workorders');
@@ -46,6 +47,7 @@ app.use('/api/leave', leaveRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/naps', napsRoutes);
+app.use('/api/napcheck', napCheckRoutes);
 app.use('/api/location', locationRoutes);
 // Work order dispatch system. The import router (static paths) is mounted
 // before the main router so /import/* and /export are not captured by /:id.
