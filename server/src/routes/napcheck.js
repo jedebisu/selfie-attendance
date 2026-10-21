@@ -6,7 +6,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 // ---------------------------------------------------------------------------
-// Public, read-only NAP Checking endpoints for the naps.ebisudps.com web app.
+// Public, read-only NAP Checking endpoints for the nap.ebisudps.com web app.
 //
 // SECURITY / SCOPE RULES:
 //  - Visayas-only: every query below hard-filters on the database's own
