@@ -37,3 +37,6 @@ Production build: `npm run build` (outputs to `dist/`). Point `VITE_API_URL` at 
 - Manual edits to status/channel are preserved across re-imports.
 - Signs never fabricate coordinates — unmapped work orders are flagged, never dropped on the map at a guessed point.
 - API base defaults to `/api` (Vite proxy). Set `VITE_API_URL` for a remote API.
+## Deployment
+
+Deployed on Vercel as project `dispatch` (Root Directory: `dispatch/`, framework: Vite). Builds trigger only when files under `dispatch/` change (see `vercel.json` + `vercel-ignore.sh`). Local dev: `npm install && npm run dev`.
