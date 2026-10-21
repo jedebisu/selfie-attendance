@@ -1,0 +1,44 @@
+name: Build checks
+
+# Catches missing files or build errors on every push, with a green/red
+# checkmark on the commit in GitHub — long before Vercel tries to deploy.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  dispatch:
+    name: dispatch (Vite build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: dispatch/package-lock.json
+      - run: npm ci
+        working-directory: dispatch
+      - run: npm run build
+        working-directory: dispatch
+
+  dashboard:
+    name: dashboard (CRA build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+        working-directory: dashboard
+      - run: npm run build
+        working-directory: dashboard
+        env:
+          # CRA treats lint warnings as errors in CI; the repo disables this
+          # on purpose (see AGENTS.md) — keep it disabled here too.
+          CI: false

@@ -1,0 +1,45 @@
+#!/bin/bash
+# Pre-push guard.
+#
+# Runs before every `git push` and blocks the push if deploy-critical files
+# exist on disk but were never committed — exactly the mistake that once made
+# a Vercel deploy fail with "vite: command not found" (app files missing from
+# the repository).
+#
+# To push anyway (rarely what you want): git push --no-verify
+
+missing=()
+for f in \
+  dispatch/package.json dispatch/index.html dispatch/vite.config.js \
+  server/package.json \
+  dashboard/package.json \
+  mobile/app.json; do
+  if [ -e "$f" ] && ! git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+    missing+=("$f")
+  fi
+done
+
+if [ "${#missing[@]}" -gt 0 ]; then
+  echo "" >&2
+  echo "🚫  Push blocked — files needed for deployment were never committed:" >&2
+  for f in "${missing[@]}"; do
+    echo "      $f" >&2
+  done
+  echo "" >&2
+  echo "Commit them first, e.g.:" >&2
+  echo "      git add <the files above>" >&2
+  echo "      git commit -m 'feat: add missing app files'" >&2
+  echo "      git push" >&2
+  echo "" >&2
+  echo "Push anyway (bypasses this check): git push --no-verify" >&2
+  exit 1
+fi
+
+# Soft warning (does not block): untracked files in app folders are NOT part
+# of this push — usually that is scratch data, but glance at them once.
+untracked=$(git ls-files --others --exclude-standard -- dispatch server dashboard mobile | wc -l | tr -d ' ')
+if [ "$untracked" -gt 0 ]; then
+  echo "⚠️   $untracked untracked file(s) under dispatch/server/dashboard/mobile are NOT being pushed — review with: git status --short" >&2
+fi
+
+exit 0

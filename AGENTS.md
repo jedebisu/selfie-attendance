@@ -47,6 +47,14 @@ eas build --platform android --profile preview   # APK build
 - **Dashboard**: Auto-deploys on push. Vercel rewrites SPA routes via `vercel.json`.
 - **Mobile**: Manual EAS builds. Use `--profile preview` for internal APK distribution.
 
+## Deployment guardrails
+
+Introduced Oct 2026 after a deploy failed with `vite: command not found` (app files existed locally but were never committed/pushed):
+
+- **Pre-push guard** — `.githooks/pre-push` (active via `git config core.hooksPath .githooks`, set locally on this Mac). Blocks `git push` if deploy-critical files (`dispatch/package.json`, `mobile/app.json`, etc.) exist on disk but are not committed. Bypass with `git push --no-verify` only when intentional.
+- **Vercel skip-unchanged** — `dispatch/vercel.json` sets `ignoreCommand: bash vercel-ignore.sh`; `vercel-ignore.sh` builds the dispatch app only when files under `dispatch/` changed since the last deployment (exit 1 = build, 0 = skip; always builds when unsure). The "Update NAP database…" server-side commits should no longer trigger (or fail) dispatch builds.
+- **CI build checks** — `.github/workflows/build-checks.yml` runs `npm run build` for `dispatch/` and `dashboard/` on every push and shows green/red on the commit in GitHub. A missing red ❌ is the first thing to check when a deploy misbehaves.
+
 ## Reliability Systems
 
 - **Keep-alive ping**: `.github/workflows/keep-alive.yml` (GitHub Actions, free on public repos) pings `/api/health` every 10 minutes so Render's free tier doesn't sleep the server. Check the Actions tab if cold starts return.
@@ -81,3 +89,4 @@ eas build --platform android --profile preview   # APK build
 - GitHub account: `jedebisu`, repo: `jedebisu/selfie-attendance`
 - Zero coding experience — avoid assuming familiarity with tooling
 - Working machine: macOS (`yanggee@Jeds-Macbook-Air`)
+- Office biometrics hardware: **NGTECO** time & attendance terminals (brand confirmed by user Aug 2026). Potential future work: import/sync NGTECO punch logs into this system so HR sees office + field attendance in one dashboard — approach depends on device model (USB export vs network API).
