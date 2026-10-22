@@ -265,15 +265,15 @@ function weeklyBars(slot, currentWeekly, previousWeekly) {
 function agentBars(slot, rows) {
   if (!rows.length) return emptyChart(slot, 'No completed work orders in this view yet.');
   const compose = (a) => (a.agentName || a.agentCode || '—') + (a.agentCode ? ` (${a.agentCode})` : '');
-  // rows arrive sorted most->least; reverse so the top agent renders on top
-  const ordered = [...rows].reverse();
+  // rows arrive sorted most->least; Chart.js renders the first label at the
+  // TOP of a y-indexed axis, so no reversal — top agent ends up on top.
   liveCharts.push(new Chart(makeCanvas(slot, 'Horizontal bar chart comparing completed work orders per agent'), {
     type: 'bar',
     data: {
-      labels: ordered.map(compose),
+      labels: rows.map(compose),
       datasets: [{
         label: 'Completed',
-        data: ordered.map((a) => a.total),
+        data: rows.map((a) => a.total),
         backgroundColor: C.purple,
         borderRadius: 3
       }]
