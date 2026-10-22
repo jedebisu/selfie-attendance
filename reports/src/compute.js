@@ -353,9 +353,9 @@ export function computeDashboard(data, extras = {}, filters = {}) {
         dayCount[day] = (dayCount[day] || 0) + 1;
       }
 
-      if (poolEntry) {
-        if (record.bde) bdeActuals[record.bde] = (bdeActuals[record.bde] || 0) + 1;
-        if (record.bbsp) bbspActuals[record.bbsp] = (bbspActuals[record.bbsp] || 0) + 1;
+      // Every completing agent appears in productivity, even when the pool
+      // cannot attribute them (BBSP/BDE stay blank in that case).
+      if (agentCode || agentName) {
         const key = agentCode || agentName.toUpperCase();
         if (!agentBags[key]) {
           agentBags[key] = {
@@ -370,6 +370,11 @@ export function computeDashboard(data, extras = {}, filters = {}) {
         agentBags[key].gah += tech === 'GAH' ? 1 : 0;
         agentBags[key].total += 1;
       }
+
+      if (poolEntry) {
+        if (record.bde) bdeActuals[record.bde] = (bdeActuals[record.bde] || 0) + 1;
+        if (record.bbsp) bbspActuals[record.bbsp] = (bbspActuals[record.bbsp] || 0) + 1;
+      }
     }
   }
 
@@ -381,14 +386,14 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     ? { GFP: prevKpis.gfpActual || 0, GAH: prevKpis.gahActual || 0, 'Grand Total': (prevKpis.gfpActual || 0) + (prevKpis.gahActual || 0) }
     : null;
 
-  const completedInWindow = (w) => {
+  const completedInWindow = (w, endDay) => {
     const counts = { GFP: 0, GAH: 0, 'Grand Total': 0 };
     for (const record of records) {
       if (record.status.toUpperCase() !== COMPLETED_STATUS) continue;
       const date = parseSheetDate(record.lastUpdate);
       if (!date) continue;
       const day = date.getDate();
-      if (day < w.startDay || day > w.endDay) continue;
+      if (day < w.startDay || day > endDay) continue;
       counts[record.tech] = (counts[record.tech] || 0) + 1;
       counts['Grand Total'] += 1;
     }
@@ -396,8 +401,12 @@ export function computeDashboard(data, extras = {}, filters = {}) {
   };
 
   const buildWindow = (w) => {
-    const installedByTech = completedInWindow(w);
-    const remaining = Math.max(0, w.endDay - daysElapsed);
+    const monthEnd = dataAsOf
+      ? new Date(dataAsOf.getFullYear(), dataAsOf.getMonth() + 1, 0).getDate()
+      : 31;
+    const endDay = Math.min(w.endDay, monthEnd);
+    const installedByTech = completedInWindow(w, endDay);
+    const remaining = Math.max(0, endDay - daysElapsed);
     const rows = ['GFP', 'GAH', 'Grand Total'].map((tech) => {
       const installed = installedByTech[tech] || 0;
       const rowTarget = scopedTarget(tech === 'Grand Total' ? '' : tech) * w.share;
@@ -423,7 +432,15 @@ export function computeDashboard(data, extras = {}, filters = {}) {
       `${fmtNum(grand.variance)} variance to hit ${w.name === 'MTD' ? 'month' : w.name} target`,
       `${remaining} remaining day(s) for ${w.name === 'MTD' ? 'the month' : w.name}`
     ];
-    return { name: w.name, startDay: w.startDay, endDay: w.endDay, share: w.share, rows, insights };
+    return {
+      name: w.name,
+      startDay: w.startDay,
+      endDay,
+      monthEnd,
+      share: w.share,
+      rows,
+      insights
+    };
   };
 
   const dcos = [...DCOS_WINDOWS.map(buildWindow), buildWindow(MTD_WINDOW)];

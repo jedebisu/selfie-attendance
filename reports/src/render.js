@@ -482,7 +482,10 @@ function vsPage(current, previous) {
     row.appendChild(el('span', 'vs-prev', `was ${metric.pct ? pct1(prev) : int(prev)}`));
     card.appendChild(row);
     const chip = el('span', `vs-chip ${diff === 0 ? 'flat' : diff > 0 ? 'better' : 'worse'}`);
-    chip.textContent = diff === 0 ? 'no change' : `${diff > 0 ? '▲ +' : '▼ −'}${int(Math.abs(diff))}`;
+    const diffText = metric.pct
+      ? `${(Math.abs(diff) * 100).toFixed(1)} pts`
+      : int(Math.abs(diff));
+    chip.textContent = diff === 0 ? 'no change' : `${diff > 0 ? '▲ +' : '▼ −'}${diffText}${metric.pct ? '' : ''}`;
     card.appendChild(chip);
     grid.appendChild(card);
   });
