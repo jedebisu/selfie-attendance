@@ -232,6 +232,7 @@ export function mountCharts(root, bundle) {
     if (kind === 'donut') mixDonut(slot, current.records);
     if (kind === 'daily') dailyBars(slot, current.dailyPerformance);
     if (kind === 'territory') territoryBars(slot, current.territoryPerformance);
+    if (kind === 'area') territoryBars(slot, current.areaPerformance);
     if (kind === 'vs-daily') {
       if (previous && previous.dailyPerformance.length) {
         vsDailyBars(slot, current.dailyPerformance, previous.dailyPerformance);

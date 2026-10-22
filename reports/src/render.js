@@ -1,19 +1,8 @@
-// DOM rendering for the EBISU Sales Report dashboard — v2, target-driven.
-// Sections (user-approved): title band, 6 KPI cards, monthly target panel,
-// daily performance, GFP/GAH mix, territory performance, per-BDE table,
-// per-BBSP table, all-records table — plus a "vs LAST MONTH" tab that
-// compares the fed month against a previous month's VALIDATION export.
+// DOM rendering for EBISU Sales Report — v3, mirroring the deployed
+// Apps Script layout: dark top bar, left sidebar pages, global filter bar,
+// KPI cards, DCOS 1 / DCOS 2 / MTD tables with insights, territory/daily
+// panels, and a Month-vs-Month page (kept per user decision).
 import { mountCharts } from './charts.js';
-
-const THEME = {
-  gfp: '#D6336C', gfpLight: '#FBE7EF',
-  gah: '#1971C2', gahLight: '#E7F3FE',
-  purple: '#6741D9', purpleLight: '#F0ECFE',
-  green: '#0CA678', greenLight: '#E4F8F2',
-  red: '#E03131', redLight: '#FCE9E9',
-  gold: '#E8A400', goldLight: '#FFF6E0',
-  navy: '#0B2545'
-};
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -22,223 +11,336 @@ function el(tag, className, text) {
   return node;
 }
 
-const int = (n) => Number(n).toLocaleString('en-US');
+const int = (n) => Math.round(Number(n)).toLocaleString('en-US');
+const fmtTarget = (n) => { // decimals preserved for DCOS targets (1,483.2)
+  const rounded = Math.round(Number(n) * 10) / 10;
+  return Number.isInteger(rounded)
+    ? rounded.toLocaleString('en-US')
+    : rounded.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+};
 const pct1 = (x) => `${(Number(x) * 100).toFixed(1)}%`;
-const num1 = (n) => Number(n).toFixed(1);
-const fmtDate = (date) => date
-  ? date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+const fmtDate = (d) => d
+  ? d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
   : '—';
-const fmtNow = () => new Date().toLocaleString('en-US', {
-  month: 'short', day: '2-digit', year: 'numeric',
-  hour: 'numeric', minute: '2-digit', hour12: true
-});
 
-// ---------- masthead, dates, tabs ----------
+// ---------- shell: top bar, sidebar, filter bar ----------
 
-function masthead(current) {
-  const header = el('header', 'masthead');
-  header.appendChild(el('h1', 'masthead-title', 'EBISU Sales Report'));
-  header.appendChild(el('p', 'masthead-sub',
-    `${current.monthLabel || 'NO DATA'} · GFP & GAH sales performance - fed by your Google Sheets CSV exports`));
-  return header;
-}
+export const PAGES = [
+  { id: 'overview', label: 'Overview', icon: '▤' },
+  { id: 'bbsp', label: 'BBSP', icon: '👤' },
+  { id: 'byarea', label: 'By Area', icon: '📍' },
+  { id: 'byterritory', label: 'By Territory', icon: '📍' },
+  { id: 'records', label: 'Records', icon: '▦' },
+  { id: 'agents', label: 'Agent Productivity', icon: '📈' },
+  { id: 'vsmonth', label: 'Month vs Month', icon: '⇄' }
+];
 
-function tabsBar(current, previous) {
-  const bar = el('nav', 'tabs');
-  bar.setAttribute('role', 'tablist');
-  const tabs = [
-    { id: 'month', label: 'THIS MONTH' },
-    { id: 'vs', label: previous ? `VS LAST MONTH (${previous.monthLabel})` : 'VS LAST MONTH' }
-  ];
-  tabs.forEach((tab, i) => {
-    const btn = el('button', `tab-btn${i === 0 ? ' active' : ''}`, tab.label);
-    btn.type = 'button';
-    btn.dataset.tab = tab.id;
-    btn.addEventListener('click', () => {
-      bar.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.pane').forEach((p) => {
-        p.classList.toggle('active', p.dataset.pane === tab.id);
-      });
-    });
-    bar.appendChild(btn);
+function topBar(bundle, meta) {
+  const { current } = bundle;
+  const bar = el('header', 'topbar');
+
+  const title = el('div', 'topbar-title', 'EBISU Sales Report');
+
+  const status = el('div', 'topbar-status');
+  status.appendChild(el('span', 'topbar-dot', '●'));
+  status.appendChild(el('span', null,
+    `Fed ${fmtDate(current.dataAsOf)} · ${int(current.kpis.totalOrders)} records`));
+
+  const actions = el('div', 'topbar-actions');
+  const reload = el('button', 'topbar-btn ghost', '⟳ Reload data');
+  reload.type = 'button';
+  reload.id = 'reload-data';
+  actions.appendChild(reload);
+
+  const monthBadge = el('select', 'topbar-btn month-badge');
+  monthBadge.id = 'month-badge';
+  monthBadge.title = 'Choose which fed month to view';
+  monthBadge.dataset.monthSelect = '1';
+  (meta.monthOptions || []).forEach((label) => {
+    const option = document.createElement('option');
+    option.value = label;
+    option.textContent = label;
+    if (label === current.monthLabel) option.selected = true;
+    monthBadge.appendChild(option);
   });
-  void current;
+  actions.appendChild(monthBadge);
+
+  const upload = el('button', 'topbar-btn accent', '⬆ Upload CSV');
+  upload.type = 'button';
+  upload.id = 'upload-csv';
+  actions.appendChild(upload);
+
+  [title, status, actions].forEach((n) => bar.appendChild(n));
   return bar;
 }
 
-function dateStrip(current) {
-  const strip = el('section', 'date-strip');
-  [
-    { label: 'MONTH OF DATA', value: current.monthLabel || '—' },
-    { label: 'DATA AS OF (LATEST LAST UPDATE)', value: fmtDate(current.dataAsOf) },
-    { label: 'PAGE REFRESHED', value: fmtNow() }
-  ].forEach((cell) => {
-    const box = el('div', 'date-cell');
-    box.appendChild(el('div', 'date-cell-label', cell.label));
-    box.appendChild(el('div', 'date-cell-value', cell.value));
-    strip.appendChild(box);
+function sideBar(activePage) {
+  const nav = el('aside', 'sidebar');
+  const logo = el('div', 'sidebar-logo');
+  const mark = el('span', 'sidebar-mark', 'E');
+  const name = el('span', 'sidebar-name', 'EBISU');
+  logo.appendChild(mark);
+  logo.appendChild(name);
+  nav.appendChild(logo);
+
+  const list = el('nav', 'sidebar-nav');
+  list.setAttribute('aria-label', 'Report pages');
+  PAGES.forEach((page) => {
+    const item = el('button', `side-item${page.id === activePage ? ' active' : ''}`);
+    item.type = 'button';
+    item.dataset.page = page.id;
+    item.appendChild(el('span', 'side-icon', page.icon));
+    item.appendChild(el('span', 'side-label', page.label));
+    list.appendChild(item);
   });
-  return strip;
+  nav.appendChild(list);
+  return nav;
 }
 
-// ---------- KPI cards ----------
+function filterBar(current, pool, handlers) {
+  const bar = el('section', 'filter-bar');
 
-function kpiSubtitle(key, result) {
-  const k = result.kpis;
-  return {
-    totalOrders: () => 'work orders in this feed',
-    actual: () => 'status COMPLETED',
-    target: () => (k.target > 0 ? 'sum of BDE targets' : 'no targets fed yet'),
-    achievement: () => 'of monthly target',
-    dailyAverage: () => `${result.daysElapsed} days elapsed`,
-    notFound: () => `of ${k.totalOrders} in feed`
-  }[key]();
+  const mkSelect = (label, key, options) => {
+    const cell = el('div', 'filter-cell');
+    cell.appendChild(el('div', 'filter-label', label));
+    const select = el('select', 'filter-select');
+    select.dataset.filter = key;
+    const all = el('option', null, 'All');
+    all.value = '';
+    select.appendChild(all);
+    options.forEach((opt) => {
+      const o = el('option', null, opt);
+      o.value = opt;
+      select.appendChild(o);
+    });
+    select.value = handlers.filters[key] || '';
+    select.addEventListener('change', () => handlers.onFilter(key, select.value));
+    cell.appendChild(select);
+    return cell;
+  };
+
+  bar.appendChild(mkSelect('BDE', 'bde', pool.bdes));
+  bar.appendChild(mkSelect('BBSP', 'bbsp', pool.bbsps));
+
+  const techCell = el('div', 'filter-cell');
+  techCell.appendChild(el('div', 'filter-label', 'TECH'));
+  const techSelect = el('select', 'filter-select');
+  techSelect.dataset.filter = 'tech';
+  techSelect.innerHTML = ''; // built inline (static list)
+  [['', 'All'], ['GFP', 'GFP'], ['GAH', 'GAH']].forEach(([v, label]) => {
+    const o = el('option', null, label);
+    o.value = v;
+    techSelect.appendChild(o);
+  });
+  techSelect.value = handlers.filters.tech || '';
+  techSelect.addEventListener('change', () => handlers.onFilter('tech', techSelect.value));
+  techCell.appendChild(techSelect);
+  bar.appendChild(techCell);
+
+  const searchCell = el('div', 'filter-cell grow');
+  searchCell.appendChild(el('div', 'filter-label', 'SEARCH'));
+  const input = el('input', 'filter-search');
+  input.type = 'search';
+  input.placeholder = 'Search subscriber, territory, account…';
+  input.value = handlers.filters.search || '';
+  input.dataset.filter = 'search';
+  let debounce = null;
+  input.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => handlers.onFilter('search', input.value), 250);
+  });
+  searchCell.appendChild(input);
+  bar.appendChild(searchCell);
+
+  const resetCell = el('div', 'filter-cell reset');
+  const reset = el('button', 'filter-reset', 'Reset');
+  reset.type = 'button';
+  reset.addEventListener('click', handlers.onReset);
+  resetCell.appendChild(reset);
+  bar.appendChild(resetCell);
+
+  return bar;
 }
+
+// ---------- Overview page ----------
 
 const KPI_CARDS = [
-  { key: 'totalOrders', title: 'TOTAL WORK ORDERS', color: THEME.navy, light: '#E8EDF7' },
-  { key: 'actual', title: 'ACTUAL (COMPLETED)', color: THEME.green, light: THEME.greenLight },
-  { key: 'target', title: 'MONTHLY TARGET', color: THEME.purple, light: THEME.purpleLight, isCount: true },
-  { key: 'achievement', title: 'ACHIEVEMENT', color: THEME.gold, light: THEME.goldLight, isPercent: true },
-  { key: 'dailyAverage', title: 'DAILY AVERAGE', color: THEME.gah, light: THEME.gahLight, isFloat: true },
-  { key: 'notFound', title: 'NOT FOUND', color: THEME.red, light: THEME.redLight }
+  { key: 'gfpActual', title: 'GFP ACTUAL', sub: 'completed GFP', cls: 'gfp' },
+  { key: 'gahActual', title: 'GAH ACTUAL', sub: 'completed GAH', cls: 'gah' },
+  { key: 'target', title: 'TARGET', sub: 'monthly target', cls: 'target' },
+  { key: 'achievement', title: 'ACHIEVEMENT', sub: 'actual vs target', cls: 'ach', isPercent: true },
+  { key: 'dailyAverage', title: 'DAILY AVERAGE', sub: 'per day', cls: 'daily', isFloat: true }
 ];
 
 function kpiCards(current) {
   const grid = el('section', 'kpi-grid');
   KPI_CARDS.forEach((card) => {
-    const value = current.kpis[card.key];
-    const display = card.isPercent
-      ? pct1(value)
-      : card.isFloat
-        ? num1(value)
-        : int(value);
+    const v = current.kpis[card.key];
     const box = el('article', 'kpi-card');
-    box.style.setProperty('--kpi-color', card.color);
-    box.style.setProperty('--kpi-light', card.light);
     box.appendChild(el('div', 'kpi-title', card.title));
-    box.appendChild(el('div', 'kpi-value', display));
-    box.appendChild(el('div', 'kpi-sub', kpiSubtitle(card.key, current)));
+    const value = card.isPercent ? pct1(v) : card.isFloat ? Number(v).toFixed(1) : int(v);
+    box.appendChild(el('div', `kpi-value c-${card.cls}`, value));
+    box.appendChild(el('div', 'kpi-sub', card.sub +
+      (card.key === 'target' && !current.kpis.target ? ' (no targets fed)' : '')));
     grid.appendChild(box);
   });
   return grid;
 }
 
-// ---------- month-view sections ----------
+function dcosWindowPanel(w) {
+  const panel = el('div', 'panel');
+  const title = w.name === 'MTD'
+    ? 'MONTH TO DATE (MTD)'
+    : `${w.name} — Day ${w.startDay}–${w.endDay}`;
+  panel.appendChild(el('h3', 'panel-title', title));
 
-function sectionBand(title) {
-  return el('h2', 'section-band', title);
-}
-
-function monthlyTargetPanel(current) {
-  const panel = el('article', 'panel');
-  panel.appendChild(el('h3', 'panel-title', 'MONTHLY TARGET'));
-  const m = current.monthlyTarget;
-  const list = el('ul', 'summary-list');
-  [
-    { label: 'Target', value: int(m.total), color: THEME.purple },
-    { label: 'Actual (completed)', value: int(m.actual), color: THEME.green },
-    { label: 'Remaining', value: int(m.remaining), color: THEME.red },
-    { label: 'Achievement', value: current.kpis.target > 0 ? pct1(current.kpis.achievement) : '—', color: THEME.gold }
-  ].forEach((item) => {
-    const row = el('li', 'summary-row');
-    const name = el('span', 'summary-name', `● ${item.label}`);
-    name.style.color = item.color;
-    row.appendChild(name);
-    row.appendChild(el('span', 'summary-value', item.value));
-    list.appendChild(row);
-  });
-  panel.appendChild(list);
-
-  const gaugeBox = el('div', 'chart-box gauge-mini');
-  gaugeBox.dataset.chart = 'gauge';
-  panel.appendChild(gaugeBox);
-  return panel;
-}
-
-function alertPanel(current) {
-  const panel = el('article', 'panel');
-  panel.appendChild(el('h3', 'panel-title', 'MANAGEMENT ALERT'));
-  let title, body, color, light;
-  if (current.kpis.notFound > 0) {
-    title = 'VALIDATION ATTENTION';
-    body = `${int(current.kpis.notFound)} work order(s) were not found in the FSM source.`;
-    color = THEME.red; light = THEME.redLight;
-  } else if (current.kpis.target === 0) {
-    title = 'NO TARGETS FED';
-    body = 'Drop the TARGETS export to compare actuals against monthly goals.';
-    color = THEME.gold; light = THEME.goldLight;
-  } else if (current.kpis.achievement >= 1) {
-    title = 'TARGET HIT';
-    body = 'Monthly target achieved. Keep the momentum going.';
-    color = THEME.green; light = THEME.greenLight;
-  } else {
-    title = 'IN PROGRESS';
-    body = `${int(current.monthlyTarget.remaining)} work orders remaining to hit the monthly target.`;
-    color = THEME.green; light = THEME.greenLight;
-  }
-  const box = el('div', 'alert');
-  box.style.setProperty('--alert-color', color);
-  box.style.setProperty('--alert-light', light);
-  box.appendChild(el('div', 'alert-title', title));
-  box.appendChild(el('div', 'alert-body', body));
-  panel.appendChild(box);
-  return panel;
-}
-
-function mixPanel() {
-  const panel = el('article', 'panel');
-  panel.appendChild(el('h3', 'panel-title', 'WORK ORDER MIX (GFP / GAH)'));
-  const box = el('div', 'chart-box donut-box');
-  box.dataset.chart = 'donut';
-  panel.appendChild(box);
-  return panel;
-}
-
-function dailyPanel() {
-  const panel = el('article', 'panel');
-  panel.appendChild(el('h3', 'panel-title', 'DAILY PERFORMANCE (COMPLETED BY DAY)'));
-  const box = el('div', 'chart-box');
-  box.dataset.chart = 'daily';
-  panel.appendChild(box);
-  return panel;
-}
-
-function targetsTable(map, actuals, emptyHint) {
-  const wrap = el('div', 'table-scroll');
-  const names = Object.keys(map);
-  if (!names.length) {
-    const note = el('p', 'table-empty', emptyHint);
-    wrap.appendChild(note);
-    return wrap;
-  }
-  const rows = names
-    .map((name) => ({ name, t: map[name], actual: actuals?.[name] || 0 }))
-    .sort((a, b) => b.t.total - a.t.total);
-
-  const table = el('table', 'data-table');
+  const wrap = el('div', 'dcos-flex');
+  const table = el('table', 'dcos-table');
   const thead = el('thead');
-  const headRow = document.createElement('tr');
-  ['NAME', 'GFP TARGET', 'GAH TARGET', 'TOTAL TARGET', 'ACTUAL (COMPLETED)', 'ACHIEVED'].forEach((label) => {
-    headRow.appendChild(el('th', null, label));
+  const hr = document.createElement('tr');
+  ['KPI', 'Installed', 'Target', 'Ach', 'Var', 'Trend (vol)', 'Trend Ach', 'Req Daily'].forEach((h) => {
+    hr.appendChild(el('th', null, h));
   });
-  thead.appendChild(headRow);
+  thead.appendChild(hr);
   table.appendChild(thead);
 
   const tbody = el('tbody');
-  rows.forEach((r, index) => {
-    const tr = el('tr', index % 2 ? 'alt' : null);
-    [
-      r.name,
-      int(r.t.gfp),
-      int(r.t.gah),
-      int(r.t.total),
-      int(r.actual),
-      r.t.total > 0 ? pct1(r.actual / r.t.total) : '—'
-    ].forEach((value, col) => {
-      tr.appendChild(el('td', col === 0 ? 'name-cell' : null, value));
+  w.rows.forEach((row) => {
+    const tr = el('tr', row.tech === 'Grand Total' ? 'grand' : null);
+    const cells = [
+      row.tech,
+      int(row.installed),
+      fmtTarget(row.target),
+      pct1(row.achPct),
+      fmtTarget(row.variance),
+      row.trend === null ? '—' : int(row.trend),
+      row.trendAch === null ? '—' : pct1(row.trendAch),
+      fmtTarget(row.reqDaily)
+    ];
+    cells.forEach((c, i) => tr.appendChild(el('td', i === 0 ? 'name-cell' : null, c)));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  const insights = el('div', 'insights-box');
+  insights.appendChild(el('div', 'insights-title', `${w.name === 'MTD' ? 'MTD' : w.name.toUpperCase()} INSIGHTS`));
+  w.insights.forEach((line) => {
+    insights.appendChild(el('div', 'insights-line', line));
+  });
+  wrap.appendChild(insights);
+  panel.appendChild(wrap);
+
+  if (w.name === 'MTD' && w.avgDaily) {
+    const avgs = el('div', 'avg-daily-line',
+      `GFP AVG DAILY ${w.avgDaily.gfp.toFixed(2)} · GAH AVG DAILY ${w.avgDaily.gah.toFixed(2)}`);
+    panel.appendChild(avgs);
+  }
+  return panel;
+}
+
+function chartPanel(title, chartKind, className) {
+  const panel = el('article', 'panel');
+  panel.appendChild(el('h3', 'panel-title', title));
+  const box = el('div', `chart-box ${className || ''}`);
+  box.dataset.chart = chartKind;
+  panel.appendChild(box);
+  return panel;
+}
+
+function overviewPage(current) {
+  const page = el('section', 'page');
+  page.dataset.page = 'overview';
+
+  page.appendChild(kpiCards(current));
+
+  const dcos = el('section', 'panel wide');
+  dcos.appendChild(el('h2', 'section-title',
+    'MONTH TO DATE — DCOS 1 / DCOS 2 / MTD'));
+  dcos.appendChild(el('p', 'section-sub',
+    `TARGET: All BDEs — GFP ${fmtTarget(current.kpis.gfpTarget)} · GAH ${fmtTarget(current.kpis.gahTarget)} = ${fmtTarget(current.kpis.target)} | DCOS 1 = 60% · DCOS 2 = 40%`));
+  current.dcos.forEach((w) => dcos.appendChild(dcosWindowPanel(w)));
+  page.appendChild(dcos);
+
+  const bottom = el('section', 'two-col');
+  bottom.appendChild(chartPanel('PERFORMANCE BY TERRITORY', 'territory', 'territory-box'));
+  bottom.appendChild(chartPanel(`DAILY PERFORMANCE — ${current.monthLabel}`, 'daily', 'daily-box'));
+  page.appendChild(bottom);
+
+  return page;
+}
+
+// ---------- tables (BBSP / BDE, area, territory, agents, records) ----------
+
+function targetsTable(map, actuals, labelCol, emptyHint) {
+  const names = Object.keys(map);
+  if (!names.length) {
+    return el('p', 'table-empty', emptyHint);
+  }
+  const wrap = el('div', 'table-scroll');
+  const table = el('table', 'data-table');
+  const thead = el('thead');
+  const hr = document.createElement('tr');
+  [labelCol, 'GFP TARGET', 'GAH TARGET', 'TOTAL TARGET', 'ACTUAL (COMPLETED)', 'ACHIEVED'].forEach((h) => hr.appendChild(el('th', null, h)));
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = el('tbody');
+  Object.entries(map)
+    .sort(([, a], [, b]) => b.total - a.total)
+    .forEach(([name, t], i) => {
+      const tr = el('tr', i % 2 ? 'alt' : null);
+      const actual = actuals?.[name] || 0;
+      [
+        name, int(t.gfp), int(t.gah), int(t.total), int(actual),
+        t.total > 0 ? pct1(actual / t.total) : '—'
+      ].forEach((c, j) => tr.appendChild(el('td', j === 0 ? 'name-cell' : null, c)));
+      tbody.appendChild(tr);
     });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function shareTable(rows, labelCol, emptyHint) {
+  if (!rows.length) return el('p', 'table-empty', emptyHint);
+  const wrap = el('div', 'table-scroll');
+  const table = el('table', 'data-table');
+  const thead = el('thead');
+  const hr = document.createElement('tr');
+  [labelCol, 'ACTUAL (COMPLETED)', 'SHARE TARGET', 'PROGRESS'].forEach((h) => hr.appendChild(el('th', null, h)));
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = el('tbody');
+  rows.forEach((row, i) => {
+    const tr = el('tr', i % 2 ? 'alt' : null);
+    const progress = row.target > 0 ? row.actual / row.target : 0;
+    [
+      row[labelCol] || 'BLANK', int(row.actual), int(row.target),
+      row.target > 0 ? pct1(progress) : '—'
+    ].forEach((c, j) => tr.appendChild(el('td', j === 0 ? 'name-cell' : null, c)));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function agentsTable(rows) {
+  if (!rows.length) return el('p', 'table-empty', 'No completed work orders in this view yet.');
+  const wrap = el('div', 'table-scroll');
+  const table = el('table', 'data-table');
+  const thead = el('thead');
+  const hr = document.createElement('tr');
+  ['AGENT', 'BBSP', 'BDE', 'GFP', 'GAH', 'TOTAL'].forEach((h) => hr.appendChild(el('th', null, h)));
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = el('tbody');
+  rows.forEach((row, i) => {
+    const tr = el('tr', i % 2 ? 'alt' : null);
+    [
+      `${row.agentName}${row.agentCode ? ` (${row.agentCode})` : ''}`,
+      row.bbsp || '—', row.bde || '—', int(row.gfp), int(row.gah), int(row.total)
+    ].forEach((c, j) => tr.appendChild(el('td', j === 0 ? 'name-cell' : null, c)));
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -247,6 +349,7 @@ function targetsTable(map, actuals, emptyHint) {
 }
 
 function recordsTable(records) {
+  if (!records.length) return el('p', 'table-empty', 'No records match the current filters.');
   const wrap = el('div', 'table-scroll');
   const table = el('table', 'data-table records-table');
   const columns = [
@@ -255,7 +358,7 @@ function recordsTable(records) {
     ['TECH', (r) => r.tech],
     ['SUBSCRIBER', (r) => r.subscriber],
     ['CUSTOMER ADDRESS', (r) => r.customerAddress],
-    ['PLAN AMOUNT', (r) => r.planAmount],
+    ['PLAN', (r) => r.planAmount],
     ['AREA', (r) => r.area],
     ['TERRITORY', (r) => r.territory],
     ['FACILITY', (r) => r.facility],
@@ -269,23 +372,18 @@ function recordsTable(records) {
     ['BDE', (r) => r.bde]
   ];
   const thead = el('thead');
-  const headRow = document.createElement('tr');
-  columns.forEach(([label]) => headRow.appendChild(el('th', null, label)));
-  thead.appendChild(headRow);
+  const hr = document.createElement('tr');
+  columns.forEach(([h]) => hr.appendChild(el('th', null, h)));
+  thead.appendChild(hr);
   table.appendChild(thead);
-
   const tbody = el('tbody');
-  records.forEach((record, index) => {
-    const tr = el('tr', index % 2 ? 'alt' : null);
-    columns.forEach(([, get], col) => {
+  records.forEach((record, i) => {
+    const tr = el('tr', i % 2 ? 'alt' : null);
+    columns.forEach(([label, get], j) => {
       const value = get(record);
-      const td = el('td', col === 0 ? 'name-cell' : null, value || '—');
-      if (columns[col][0] === 'STATUS' && String(value).toUpperCase() === 'COMPLETED') {
-        td.classList.add('good-value');
-      }
-      if (columns[col][0] === 'RESULT' && String(value).toUpperCase() === 'NOT FOUND') {
-        td.classList.add('bad-value');
-      }
+      const td = el('td', j === 0 ? 'name-cell' : null, value || '—');
+      if (label === 'STATUS' && String(value).toUpperCase() === 'COMPLETED') td.classList.add('good-value');
+      if (label === 'RESULT' && String(value).toUpperCase() === 'NOT FOUND') td.classList.add('bad-value');
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -295,143 +393,170 @@ function recordsTable(records) {
   return wrap;
 }
 
-function monthView(current) {
-  const pane = el('section', 'pane active');
-  pane.dataset.pane = 'month';
+// ---------- secondary pages ----------
 
-  pane.appendChild(dateStrip(current));
-  pane.appendChild(kpiCards(current));
-  pane.appendChild(sectionBand('EXECUTIVE OVERVIEW'));
-
-  const row = el('section', 'panel-row');
-  row.appendChild(monthlyTargetPanel(current));
-  row.appendChild(alertPanel(current));
-  row.appendChild(mixPanel());
-  pane.appendChild(row);
-
-  const dailyBlock = el('article', 'panel chart-wide');
-  dailyBlock.appendChild(el('h3', 'panel-title', 'DAILY PERFORMANCE — COMPLETED WORK ORDERS BY DAY OF MONTH'));
-  const dailyBox = el('div', 'chart-box daily-box');
-  dailyBox.dataset.chart = 'daily';
-  dailyBlock.appendChild(dailyBox);
-  pane.appendChild(dailyBlock);
-
-  pane.appendChild(sectionBand('TERRITORY PERFORMANCE'));
-  const territoryBlock = el('article', 'panel chart-wide');
-  territoryBlock.appendChild(el('h3', 'panel-title', 'COMPLETED VS SHARE-DISTRIBUTED TARGET'));
-  const territoryBox = el('div', 'chart-box territory-box');
-  territoryBox.dataset.chart = 'territory';
-  territoryBlock.appendChild(territoryBox);
-  pane.appendChild(territoryBlock);
-
-  pane.appendChild(sectionBand('BDE TARGETS'));
-  const bdePanel = el('article', 'panel');
-  bdePanel.appendChild(targetsTable(
-    current.bdeTargets,
-    current.bdeActuals,
-    'No TARGETS CSV fed yet — drag the TARGETS export onto this page to compare against monthly goals.'
-  ));
-  pane.appendChild(bdePanel);
-
-  pane.appendChild(sectionBand('BBSP TARGETS'));
-  const bbspPanel = el('article', 'panel');
-  bbspPanel.appendChild(targetsTable(
-    current.bbspTargets,
-    current.bbspActuals,
-    'No BBSP TARGETS CSV fed yet — partner-store targets will appear here once fed.'
-  ));
-  pane.appendChild(bbspPanel);
-
-  pane.appendChild(sectionBand(`ALL WORK ORDERS (${int(current.records.length)})`));
-  const recordsPanel = el('article', 'panel');
-  recordsPanel.appendChild(recordsTable(current.records));
-  pane.appendChild(recordsPanel);
-
-  return pane;
+function bbspPage(current) {
+  const page = el('section', 'page');
+  page.dataset.page = 'bbsp';
+  page.appendChild(el('h2', 'page-heading', 'BBSP PERFORMANCE'));
+  const bdePanel = el('div', 'panel wide');
+  bdePanel.appendChild(el('h3', 'panel-title', 'BY BDE'));
+  bdePanel.appendChild(targetsTable(current.bdeTargets, current.bdeActuals, 'BDE',
+    'No TARGETS CSV fed yet — drag the TARGETS export onto this page.'));
+  page.appendChild(bdePanel);
+  const bbspPanel = el('div', 'panel wide');
+  bbspPanel.appendChild(el('h3', 'panel-title', 'BY BBSP (partner stores)'));
+  bbspPanel.appendChild(targetsTable(current.bbspTargets, current.bbspActuals, 'BBSP',
+    'No BBSP TARGETS CSV fed yet — partner-store targets will appear here once fed.'));
+  page.appendChild(bbspPanel);
+  return page;
 }
 
-// ---------- vs-last-month view ----------
-
-const VS_METRICS = [
-  { label: 'TOTAL WORK ORDERS', get: (d) => d.kpis.totalOrders, fmt: int, higherBetter: true },
-  { label: 'ACTUAL (COMPLETED)', get: (d) => d.kpis.actual, fmt: int, higherBetter: true },
-  { label: 'ACHIEVEMENT', get: (d) => d.kpis.achievement, fmt: pct1, higherBetter: true },
-  { label: 'DAILY AVERAGE', get: (d) => d.kpis.dailyAverage, fmt: num1, higherBetter: true },
-  { label: 'NOT FOUND', get: (d) => d.kpis.notFound, fmt: int, higherBetter: false }
-];
-
-function vsDeltaCard(metric, current, previous) {
-  const cur = metric.get(current);
-  const prev = metric.get(previous);
-  const diff = cur - prev;
-  const improved = metric.higherBetter ? diff > 0 : diff < 0;
-  const unchanged = diff === 0;
-
-  const card = el('article', 'vs-card');
-  card.appendChild(el('div', 'vs-label', metric.label));
-  const valueRow = el('div', 'vs-values');
-  const now = el('span', 'vs-now', metric.fmt(cur));
-  const then = el('span', 'vs-prev', `was ${metric.fmt(prev)}`);
-  valueRow.appendChild(now);
-  valueRow.appendChild(then);
-  card.appendChild(valueRow);
-
-  const chip = el('span', `vs-chip ${unchanged ? 'flat' : improved ? 'better' : 'worse'}`);
-  chip.textContent = unchanged
-    ? 'no change'
-    : `${diff > 0 ? '▲ +' : '▼ −'}${metric.fmt(Math.abs(diff)).replace(/\.0%?$/, '')}`;
-  card.appendChild(chip);
-  return card;
+function simpleSharePage(id, title, rows, labelCol, emptyHint) {
+  const page = el('section', 'page');
+  page.dataset.page = id;
+  page.appendChild(el('h2', 'page-heading', title));
+  const chart = el('div', 'panel wide');
+  chart.appendChild(el('h3', 'panel-title', `${title} — COMPLETED VS SHARE-DISTRIBUTED TARGET`));
+  const box = el('div', 'chart-box territory-box');
+  box.dataset.chart = id === 'byarea' ? 'area' : 'territory';
+  chart.appendChild(box);
+  page.appendChild(chart);
+  const tablePanel = el('div', 'panel wide');
+  tablePanel.appendChild(shareTable(rows, labelCol, emptyHint));
+  page.appendChild(tablePanel);
+  return page;
 }
 
-function vsView(current, previous) {
-  const pane = el('section', 'pane');
-  pane.dataset.pane = 'vs';
+function recordsPage(current) {
+  const page = el('section', 'page');
+  page.dataset.page = 'records';
+  page.appendChild(el('h2', 'page-heading', `ALL WORK ORDERS (${int(current.kpis.totalOrders)})`));
+  const panel = el('div', 'panel wide');
+  panel.appendChild(recordsTable(current.records));
+  page.appendChild(panel);
+  return page;
+}
+
+function agentsPage(current) {
+  const page = el('section', 'page');
+  page.dataset.page = 'agents';
+  page.appendChild(el('h2', 'page-heading', 'AGENT PRODUCTIVITY — COMPLETED WORK ORDERS'));
+  const panel = el('div', 'panel wide');
+  panel.appendChild(agentsTable(current.agentProductivity));
+  page.appendChild(panel);
+  return page;
+}
+
+function vsPage(current, previous) {
+  const page = el('section', 'page');
+  page.dataset.page = 'vsmonth';
 
   if (!previous) {
     const empty = el('div', 'vs-empty');
     empty.appendChild(el('div', 'empty-title', 'No previous month fed yet'));
     empty.appendChild(el('div', 'empty-hint',
-      'Export the PREVIOUS month\'s VALIDATION sheet as CSV and drag it onto this page together with this month\'s. The site groups feeds by their own data month automatically.'));
-    pane.appendChild(empty);
-    return pane;
+      'Export the PREVIOUS month\'s VALIDATION sheet as CSV and use Upload CSV (or drag it here). The site groups feeds by their own data month automatically.'));
+    page.appendChild(empty);
+    return page;
   }
 
-  pane.appendChild(el('h2', 'vs-header', `${current.monthLabel} vs ${previous.monthLabel}`));
+  page.appendChild(el('h2', 'page-heading', `${current.monthLabel} vs ${previous.monthLabel}`));
 
   const grid = el('section', 'vs-grid');
-  VS_METRICS.forEach((metric) => grid.appendChild(vsDeltaCard(metric, current, previous)));
-  pane.appendChild(grid);
+  const d = (a, b) => a - b;
+  [
+    { label: 'GFP ACTUAL', key: 'gfpActual' },
+    { label: 'GAH ACTUAL', key: 'gahActual' },
+    { label: 'TOTAL COMPLETED', key: 'actual' },
+    { label: 'TARGET', key: 'target' },
+    { label: 'ACHIEVEMENT', key: 'achievement', pct: true }
+  ].forEach((metric) => {
+    const cur = current.kpis[metric.key];
+    const prev = previous.kpis[metric.key];
+    const diff = d(cur, prev);
+    const card = el('article', 'vs-card');
+    card.appendChild(el('div', 'vs-label', metric.label));
+    const row = el('div', 'vs-values');
+    row.appendChild(el('span', 'vs-now', metric.pct ? pct1(cur) : int(cur)));
+    row.appendChild(el('span', 'vs-prev', `was ${metric.pct ? pct1(prev) : int(prev)}`));
+    card.appendChild(row);
+    const chip = el('span', `vs-chip ${diff === 0 ? 'flat' : diff > 0 ? 'better' : 'worse'}`);
+    chip.textContent = diff === 0 ? 'no change' : `${diff > 0 ? '▲ +' : '▼ −'}${int(Math.abs(diff))}`;
+    card.appendChild(chip);
+    grid.appendChild(card);
+  });
+  page.appendChild(grid);
 
-  pane.appendChild(sectionBand('DAILY PACING, MONTH VS MONTH'));
-  const block = el('article', 'panel chart-wide');
-  block.appendChild(el('h3', 'panel-title', 'COMPLETED WORK ORDERS BY DAY OF MONTH'));
+  const panel = el('article', 'panel wide');
+  panel.appendChild(el('h3', 'panel-title', 'DAILY PACING, MONTH VS MONTH'));
   const box = el('div', 'chart-box daily-box');
   box.dataset.chart = 'vs-daily';
-  block.appendChild(box);
-  pane.appendChild(block);
+  panel.appendChild(box);
+  page.appendChild(panel);
 
-  return pane;
+  return page;
 }
 
 // ---------- root ----------
 
-export function renderDashboard(container, bundle) {
-  const { current, previous } = bundle;
-  const root = el('div', 'dashboard');
+export function renderDashboard(container, bundle, handlers) {
+  const { current, previous, activePage } = bundle;
+  const root = el('div', 'app');
 
-  root.appendChild(masthead(current));
-  root.appendChild(tabsBar(current, previous));
+  root.appendChild(topBar(bundle, handlers.meta));
 
-  const monthPane = monthView(current);
-  const vsPane = vsView(current, previous);
-  root.appendChild(monthPane);
-  root.appendChild(vsPane);
+  const body = el('div', 'app-body');
+  body.appendChild(sideBar(activePage));
 
-  const footer = el('footer', 'page-footer');
-  footer.appendChild(el('p', null, `EBISU Sales Report • Fed by your VALIDATION, TARGETS, BBSP TARGETS and AGENT POOL CSV exports`));
-  root.appendChild(footer);
+  const main = el('main', 'content');
+  main.appendChild(filterBar(current, handlers.pool, handlers));
+  main.appendChild(switchPage(bundle));
+  main.appendChild(el('footer', 'page-footer',
+    'EBISU Sales Report • Fed by your VALIDATION, TARGETS, BBSP TARGETS and AGENT POOL CSV exports'));
+  body.appendChild(main);
 
+  const uploadInput = el('input');
+  uploadInput.type = 'file';
+  uploadInput.accept = '.csv';
+  uploadInput.multiple = true;
+  uploadInput.className = 'visually-hidden';
+  uploadInput.id = 'csv-input';
+  uploadInput.addEventListener('change', () => handlers.onFiles(uploadInput.files));
+  main.appendChild(uploadInput);
+
+  root.appendChild(body);
   container.appendChild(root);
-  mountCharts(root, bundle);
+
+  root.querySelector('#reload-data')?.addEventListener('click', handlers.onReload);
+  root.querySelector('#upload-csv')?.addEventListener('click', () => uploadInput.click());
+  const monthSelect = root.querySelector('#month-badge');
+  monthSelect?.addEventListener('change', () => handlers.onMonth(monthSelect.value));
+
+  wireSidebar(root, activePage, handlers.onPage);
+  mountCharts(main, bundle);
+}
+
+function switchPage(bundle) {
+  const pages = { overview: overviewPage, bbsp: bbspPage, records: recordsPage, agents: agentsPage };
+  const { current, previous, activePage } = bundle;
+  let page;
+  if (activePage === 'vsmonth') {
+    page = vsPage(current, previous);
+  } else if (activePage === 'byarea') {
+    page = simpleSharePage('byarea', 'BY AREA', current.areaPerformance, 'area', 'No completed work orders with an area in this view.');
+  } else if (activePage === 'byterritory') {
+    page = simpleSharePage('byterritory', 'BY TERRITORY', current.territoryPerformance, 'territory', 'No completed work orders with a territory in this view.');
+  } else {
+    page = (pages[activePage] || overviewPage)(current);
+  }
+  page.classList.add('active');
+  return page;
+}
+
+function wireSidebar(root, activePage, onPage) {
+  root.querySelectorAll('.side-item').forEach((item) => {
+    item.addEventListener('click', () => onPage(item.dataset.page));
+  });
+  void activePage;
 }

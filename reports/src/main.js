@@ -7,109 +7,182 @@ import {
   computeDashboard,
   detectFeedType
 } from './compute.js';
-import { renderDashboard } from './render.js';
+import { renderDashboard, PAGES } from './render.js';
 
 const app = document.getElementById('app');
 const FEEDS = [
-  { url: 'data/validation.csv', type: 'validation', required: true },
-  { url: 'data/bde-targets.csv', type: 'bdeTargets', required: false },
-  { url: 'data/bbsp-targets.csv', type: 'bspbTargets', required: false },
-  { url: 'data/agent-pool.csv', type: 'agentPool', required: false }
+  { url: 'data/validation.csv', required: true },
+  // Optional second month (e.g. last month's export) — same routing, keyed by
+  // its own data month; powers the Month-vs-Month page from files as well.
+  { url: 'data/validation-previous.csv', required: false },
+  { url: 'data/bde-targets.csv', required: false },
+  { url: 'data/bbsp-targets.csv', required: false },
+  { url: 'data/agent-pool.csv', required: false }
 ];
 
-// State: VALIDATION months are keyed by their own data month so the
-// "vs LAST MONTH" view can compare the newest fed month against the
-// previous one. Target/pool feeds are single-slot overlays.
+// ---- state ----
+// VALIDATION months are keyed by their own data month (from LAST UPDATE), so
+// any number of fed months can coexist; Target/pool feeds are single-slot.
 const state = {
-  validations: new Map(), // monthLabel -> { rows, fileName }
+  validations: new Map(), // monthLabel -> { rows, asOf, fileName }
   bdeTargets: null,
   bspbTargets: null,
-  agentPool: null
+  agentPool: null,
+  selectedMonth: null, // null = newest fed month
+  activePage: (() => {
+    const hash = String(window.location.hash || '').replace('#', '');
+    return PAGES.some((p) => p.id === hash) ? hash : 'overview';
+  })(),
+  filters: { bde: '', bbsp: '', tech: '', search: '' }
 };
 
 function showEmptyState(message, hint) {
   app.innerHTML = '';
   const empty = document.createElement('div');
   empty.className = 'empty-state';
-  empty.textContent = '';
-  const title = document.createElement('div');
-  title.className = 'empty-title';
-  title.textContent = message;
-  const hintEl = document.createElement('div');
-  hintEl.className = 'empty-hint';
-  hintEl.textContent = hint;
-  empty.appendChild(title);
-  empty.appendChild(hintEl);
+  empty.appendChild(Object.assign(document.createElement('div'), { className: 'empty-title', textContent: message }));
+  empty.appendChild(Object.assign(document.createElement('div'), { className: 'empty-hint', textContent: hint }));
   app.appendChild(empty);
 }
 
-function monthLabelOf(rows) {
-  return computeDashboard(rows).monthLabel;
+function normalizeHeaderRow(rows) {
+  return Array.isArray(rows) && rows.length ? rows[0] : [];
 }
 
 function applyFeed(type, rows, fileName) {
+  const norm = (v) => String(v ?? '').trim().toUpperCase();
   if (type === 'validation') {
-    const month = monthLabelOf(rows);
-    if (!month) throw new Error('no dates in this VALIDATION export');
-    state.validations.set(month, { rows, fileName });
-    return `VALIDATION for ${month}`;
+    // month key from the row data itself (max LAST UPDATE)
+    const H = normalizeHeaderRow(rows).map((h) => String(h).trim().toLowerCase().replace(/[\s_-]+/g, ''));
+    const LU = H.indexOf('lastupdate');
+    let best = null;
+    if (LU !== -1) {
+      for (let i = 1; i < rows.length; i++) {
+        const raw = rows[i][LU];
+        const m = norm(raw).match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (!m) continue;
+        const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+        const date = new Date(year, Number(m[1]) - 1, Number(m[2]));
+        if (!best || date > best) best = date;
+      }
+    }
+    if (!best) throw new Error('no dates found in this VALIDATION export');
+    const label = best.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
+    state.validations.set(label, { rows, asOf: best, fileName });
+    if (!state.selectedMonth) state.selectedMonth = label;
+    return `VALIDATION for ${label}`;
   }
   if (type === 'bdeTargets') { state.bdeTargets = parseBdeTargets(rows); return 'TARGETS'; }
   if (type === 'bspbTargets') { state.bspbTargets = parseBspbTargets(rows); return 'BBSP TARGETS'; }
   if (type === 'agentPool') { state.agentPool = parseAgentPool(rows); return 'AGENT POOL'; }
-  return null;
+  throw new Error('unknown feed type');
 }
 
-/** Sort VALIDATION months newest-first by their data date (not string compare). */
 function sortedMonths() {
-  const labeled = [];
-  for (const [label, feed] of state.validations) {
-    const asOf = computeDashboard(feed.rows).dataAsOf;
-    labeled.push({ label, asOf, feed });
-  }
-  labeled.sort((a, b) => (b.asOf?.getTime() || 0) - (a.asOf?.getTime() || 0));
-  return labeled;
+  return [...state.validations.entries()]
+    .sort(([, a], [, b]) => b.asOf.getTime() - a.asOf.getTime());
 }
 
-function rebuild(sourceNotes) {
-  const months = sortedMonths();
-  if (months.length === 0) {
+function sourceNotes() {
+  const notes = sortedMonths().map(([label, feed]) => `${feed.fileName} (${label})`);
+  if (state.bdeTargets) notes.push('TARGETS');
+  if (state.bspbTargets) notes.push('BBSP TARGETS');
+  if (state.agentPool) notes.push('AGENT POOL');
+  return notes;
+}
+
+function rebuild() {
+  const months = sortedMonths(); // newest first
+  if (!months.length) {
     showEmptyState(
       'No VALIDATION data yet',
-      'Feed the site by dragging a VALIDATION sheet export (CSV) onto this page — plus the TARGETS, BBSP TARGETS and AGENT POOL exports for the target tables (all optional).'
+      'Feed the site with Upload CSV (top right) or by dragging a VALIDATION sheet export onto this page — plus the TARGETS, BBSP TARGETS and AGENT POOL exports for the target tables (all optional).'
     );
     return;
   }
 
-  const extras = {
-    bdeTargets: state.bdeTargets,
-    bspbTargets: state.bspbTargets,
-    agentPool: state.agentPool
+  state.filters = {
+    ...state.filters,
+    bde: state.agentPool?.bdes.includes(state.filters.bde) ? state.filters.bde : '',
+    bbsp: state.agentPool?.bbsps.includes(state.filters.bbsp) ? state.filters.bbsp : ''
   };
 
-  const current = computeDashboard(months[0].feed.rows, extras);
-  const previous = months[1] ? computeDashboard(months[1].feed.rows, extras) : null;
+  const currentLabel = state.selectedMonth && state.validations.has(state.selectedMonth)
+    ? state.selectedMonth
+    : months[0][0];
+  const extras = {
+    bdeTargets: state.bdeTargets || undefined,
+    bspbTargets: state.bspbTargets || undefined,
+    agentPool: state.agentPool || undefined
+  };
+
+  const currentIndex = months.findIndex(([label]) => label === currentLabel);
+  const currentEntry = months[currentIndex];
+  const prevEntry = currentIndex + 1 < months.length ? months[currentIndex + 1] : null;
+
+  const previous = prevEntry
+    ? computeDashboard(prevEntry[1].rows, extras, state.filters)
+    : null;
+  const current = computeDashboard(currentEntry[1].rows, { ...extras, prev: previous }, state.filters);
+
+  const bundle = {
+    current,
+    previous,
+    activePage: state.activePage,
+    previousLabel: prevEntry ? prevEntry[0] : null
+  };
+
+  const handlers = {
+    filters: state.filters,
+    pool: state.agentPool || { bdes: [], bbsps: [] },
+    meta: { monthOptions: months.map(([label]) => label) },
+    onFilter: (key, value) => {
+      state.filters[key] = value;
+      rebuild();
+    },
+    onReset: () => {
+      state.filters = { bde: '', bbsp: '', tech: '', search: '' };
+      rebuild();
+    },
+    onPage: (page) => {
+      state.activePage = page;
+      rebuild();
+    },
+    onReload: () => {
+      state.validations.clear();
+      state.bdeTargets = null;
+      state.bspbTargets = null;
+      state.agentPool = null;
+      state.selectedMonth = null;
+      boot();
+    },
+    onFiles: async (fileList) => {
+      await consumeFiles(Array.from(fileList || []));
+    },
+    onMonth: (label) => {
+      if (state.validations.has(label)) {
+        state.selectedMonth = label;
+        rebuild();
+      }
+    }
+  };
 
   app.innerHTML = '';
-  if (sourceNotes && sourceNotes.length) {
-    const banner = document.createElement('div');
-    banner.className = 'feed-banner';
-    banner.textContent = `Fed by: ${sourceNotes.join(' · ')}`;
-    app.appendChild(banner);
-  }
-  renderDashboard(app, { current, previous, monthCount: months.length });
+  renderDashboard(app, bundle, handlers);
+
+  const bannerText = sourceNotes().join(' · ');
+  const banner = document.createElement('div');
+  banner.className = 'feed-banner';
+  banner.textContent = `FED BY: ${bannerText}`;
+  app.appendChild(banner);
 }
 
-async function renderFromCsv(text, fileName) {
+async function consumeFile(text, fileName) {
   const rows = parseCsv(text);
   const type = detectFeedType(rows[0]);
   if (!type) throw new Error('unrecognized header row');
   applyFeed(type, rows, fileName);
-  const notes = [...state.validations.entries()].map(([month, feed]) => `${feed.fileName} (${month})`);
-  if (state.bdeTargets) notes.push('TARGETS');
-  if (state.bspbTargets) notes.push('BBSP TARGETS');
-  if (state.agentPool) notes.push('AGENT POOL');
-  rebuild(notes);
+  rebuild();
 }
 
 function readFile(file) {
@@ -119,6 +192,25 @@ function readFile(file) {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
+}
+
+async function consumeFiles(files) {
+  if (!files.length) return;
+  const unapplied = [];
+  for (const file of files) {
+    try {
+      await consumeFile(await readFile(file), file.name);
+    } catch (error) {
+      console.error(`Could not use ${file.name}:`, error);
+      unapplied.push(file.name);
+    }
+  }
+  if (unapplied.length) {
+    showEmptyState(
+      'Some files could not be used',
+      `Not recognized as a VALIDATION, TARGETS, BBSP TARGETS, or AGENT POOL export: ${unapplied.join(', ')}. Export each tab with File ▸ Download ▸ Comma-separated values.`
+    );
+  }
 }
 
 async function boot() {
@@ -153,12 +245,7 @@ async function boot() {
     console.error('Boot failed:', error);
     return;
   }
-
-  const notes = [...state.validations.entries()].map(([month, feed]) => `${feed.fileName} (${month})`);
-  if (state.bdeTargets) notes.push('TARGETS');
-  if (state.bspbTargets) notes.push('BBSP TARGETS');
-  if (state.agentPool) notes.push('AGENT POOL');
-  rebuild(notes);
+  rebuild();
 }
 
 // ---- drag & drop: one or many files, each routed by its header shape ----
@@ -189,30 +276,12 @@ window.addEventListener('dragleave', () => {
   if (dragDepth === 0 && overlay) overlay.classList.remove('visible');
 });
 
-window.addEventListener('drop', async (event) => {
+window.addEventListener('drop', (event) => {
   event.preventDefault();
   dragDepth = 0;
   if (overlay) overlay.classList.remove('visible');
-
   const files = Array.from(event.dataTransfer?.files || []);
-  if (!files.length) return;
-
-  const unapplied = [];
-  for (const file of files) {
-    try {
-      await renderFromCsv(await readFile(file), file.name);
-    } catch (error) {
-      console.error(`Could not use ${file.name}:`, error);
-      unapplied.push(file.name);
-    }
-  }
-
-  if (unapplied.length === files.length) {
-    showEmptyState(
-      'Could not use those files',
-      'None of the dropped files matched a VALIDATION, TARGETS, BBSP TARGETS, or AGENT POOL export. Export each tab with File ▸ Download ▸ Comma-separated values.'
-    );
-  }
+  if (files.length) consumeFiles(files);
 });
 
 boot();
