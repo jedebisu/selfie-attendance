@@ -1,4 +1,4 @@
-/* EBISU Sales Report — THEME mirrors the Apps Script dashboard palette. */
+/* EBISU Sales Report — THEME mirrors the source dashboard palette. */
 
 :root {
   --navy: #0b2545;
@@ -9,6 +9,8 @@
   --text: #1b2a41;
   --muted: #6b7a99;
   --row-alt: #f6f9fe;
+  --green: #0ca678;
+  --red: #e03131;
 }
 
 * {
@@ -54,11 +56,51 @@ body {
   opacity: 0.8;
 }
 
+/* ---- tabs ---- */
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.tab-btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #ffffff;
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--navy-mid);
+  outline-offset: 2px;
+}
+
+.pane {
+  display: none;
+}
+
+.pane.active {
+  display: block;
+}
+
 /* ---- date strip ---- */
 
 .date-strip {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.3fr 1fr;
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -101,7 +143,7 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 108px;
+  min-height: 104px;
 }
 
 .kpi-title {
@@ -109,7 +151,7 @@ body {
   color: #ffffff;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   text-align: center;
   padding: 5px 4px;
 }
@@ -121,9 +163,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 27px;
+  font-size: 24px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  padding: 2px;
 }
 
 .kpi-sub {
@@ -134,7 +177,7 @@ body {
   padding: 3px 4px 6px;
 }
 
-/* ---- section bands ---- */
+/* ---- section bands / panels ---- */
 
 .section-band {
   background: var(--navy);
@@ -147,19 +190,14 @@ body {
   margin: 18px 0 10px;
 }
 
-.section-band.center {
-  text-align: center;
-}
-
-/* ---- panels ---- */
-
 .panel-row {
   display: grid;
-  grid-template-columns: 1fr 1.2fr 1fr;
+  grid-template-columns: 1.1fr 1fr 1fr;
   gap: 10px;
 }
 
-.panel {
+.panel,
+.chart-wide {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -175,7 +213,11 @@ body {
   color: var(--navy);
 }
 
-/* validation summary */
+.chart-wide {
+  margin-bottom: 4px;
+}
+
+/* summary rows (monthly target panel) */
 
 .summary-list {
   list-style: none;
@@ -215,11 +257,12 @@ body {
 }
 
 .donut-box {
-  height: 210px;
+  height: 220px;
 }
 
-.agents-chart {
-  height: 320px;
+.daily-box,
+.territory-box {
+  height: 280px;
 }
 
 .chart-empty {
@@ -233,10 +276,6 @@ body {
   border-radius: 8px;
   padding: 12px;
   text-align: center;
-}
-
-.gauge-slot {
-  min-height: 170px;
 }
 
 .gauge-mini {
@@ -254,20 +293,6 @@ body {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text);
-}
-
-.chart-block {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  min-width: 0;
-}
-
-.chart-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
 }
 
 /* management alert */
@@ -299,56 +324,166 @@ body {
   line-height: 1.5;
 }
 
-/* ---- agents ---- */
+/* ---- data tables (BDE / BBSP / records) ---- */
 
-.agents-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 10px;
+.table-scroll {
+  overflow-x: auto;
 }
 
-.agents-table {
+.data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12.5px;
 }
 
-.agents-table th {
+.data-table th {
   background: var(--navy-mid);
   color: #ffffff;
   font-size: 10.5px;
   letter-spacing: 0.5px;
   padding: 7px 8px;
   text-align: center;
+  white-space: nowrap;
 }
 
-.agents-table td {
+.data-table td {
   padding: 7px 8px;
   text-align: center;
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
 }
 
-.agents-row td {
-  background: var(--medal, transparent);
-}
-
-.agents-row:nth-child(odd):not([style*='medal']) td {
+.data-table tr.alt td {
   background: var(--row-alt);
 }
 
-.agents-row:nth-child(even):not([style*='medal']) td {
-  background: var(--panel);
-}
-
-.agent-name-cell {
+.name-cell {
   text-align: left !important;
   font-weight: 600;
 }
 
+.records-table {
+  font-size: 11px;
+}
+
+.records-table td {
+  padding: 5px 7px;
+  white-space: nowrap;
+}
+
+.good-value {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.bad-value {
+  color: var(--red);
+  font-weight: 700;
+}
+
 .table-empty {
   color: var(--muted);
-  padding: 16px;
+  font-size: 12.5px;
+  padding: 14px 4px;
+}
+
+/* ---- vs last month ---- */
+
+.vs-header {
+  background: var(--navy);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 4px 0 12px;
+  text-align: center;
+}
+
+.vs-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.vs-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+
+.vs-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vs-now {
+  font-size: 21px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
+}
+
+.vs-prev {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.vs-chip {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.vs-chip.better {
+  background: #e4f8f2;
+  color: var(--green);
+}
+
+.vs-chip.worse {
+  background: #fce9e9;
+  color: var(--red);
+}
+
+.vs-chip.flat {
+  background: #eef1f5;
+  color: var(--muted);
+}
+
+.vs-empty {
+  max-width: 460px;
+  margin: 60px auto;
+  text-align: center;
+  padding: 32px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.vs-empty .empty-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 8px;
+}
+
+.vs-empty .empty-hint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* ---- footer ---- */
@@ -368,9 +503,9 @@ body {
 /* ---- feed banner / empty state / drop overlay (main.js) ---- */
 
 .feed-banner {
-  margin: 10px 0 14px;
+  margin: 4px 0 12px;
   padding: 7px 14px;
-  background: var(--page);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--muted);
@@ -378,8 +513,8 @@ body {
 }
 
 .empty-state {
-  max-width: 420px;
-  margin: 120px auto;
+  max-width: 440px;
+  margin: 110px auto;
   text-align: center;
   padding: 32px;
   background: var(--panel);
@@ -419,8 +554,8 @@ body {
   display: flex;
 }
 
-.render-pending,
-.boot {
+.boot,
+.render-pending {
   text-align: center;
   padding: 24px;
   color: var(--muted);
@@ -433,20 +568,15 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .panel-row,
-  .chart-row {
+  .vs-grid {
     grid-template-columns: 1fr 1fr;
-  }
-  .agents-layout {
-    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 640px) {
   .kpi-grid,
   .panel-row,
-  .chart-row {
-    grid-template-columns: 1fr;
-  }
+  .vs-grid,
   .date-strip {
     grid-template-columns: 1fr;
   }

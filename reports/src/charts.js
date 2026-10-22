@@ -1,6 +1,7 @@
-// Chart mounting for EBISU Sales Report (Chart.js).
-// Mirrors the Apps Script dashboard charts: GFP/GAH donut, match-rate gauge,
-// four category breakdowns, and a stacked top-agents bar.
+// Chart mounting for EBISU Sales Report v2 (Chart.js).
+// Reuses the dashboard-palette CSS variables and mirrors the target-driven
+// visuals: achievement gauge, GFP/GAH mix, daily pacing bars, territory
+// performance with share-distributed targets, and month-vs-month bars.
 import {
   Chart,
   DoughnutController,
@@ -20,20 +21,25 @@ Chart.register(
 );
 
 const C = {
-  gfp: '#D6336C', gah: '#1971C2', purple: '#6741D9', green: '#0CA678',
-  red: '#E03131', gold: '#E8A400', text: '#1B2A41', muted: '#6B7A99',
-  border: '#DDE6F5', track: '#E4EAF5'
+  gfp: '#D6336C', gah: '#1971C2', other: '#ADB5BD', purple: '#6741D9',
+  green: '#0CA678', red: '#E03131', gold: '#E8A400',
+  text: '#1B2A41', muted: '#6B7A99', border: '#DDE6F5', track: '#E4EAF5',
+  target: '#B9C6E0'
 };
 
-// Re-feeding a CSV clears the DOM; give the old Chart.js instances a proper
-// destroy so the registry never accumulates dead ones across feeds.
+// Re-feeding clears the DOM; destroy old instances so the registry
+// never accumulates dead charts across feeds.
 const liveCharts = [];
 
-function chartOptions(extra = {}) {
+const reducedMotion = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function baseOptions(extra = {}) {
   return {
     responsive: true,
     maintainAspectRatio: false,
-    animation: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? false : undefined,
+    animation: reducedMotion() ? false : undefined,
     ...extra
   };
 }
@@ -61,121 +67,177 @@ function emptyChart(slot, message) {
   slot.appendChild(note);
 }
 
-// ---- GFP vs GAH donut ----
-function donut(slot, result) {
-  if (result.total === 0) return emptyChart(slot, 'No GFP or GAH work orders in this feed.');
-  liveCharts.push(new Chart(makeCanvas(slot, `GFP versus GAH mix: ${result.gfp} GFP and ${result.gah} GAH work orders`), {
+// ---- achievement gauge (semicircle + centered %) ----
+function gauge(slot, achievement) {
+  const pct = Math.max(0, Math.min(1, achievement));
+  const shown = Math.round(pct * 100);
+  const zone = shown >= 100 ? C.green : shown >= 80 ? C.green : shown >= 50 ? C.gold : C.red;
+  const data = shown === 0 ? 0.1 : shown; // tiny sliver keeps the arc visible at 0
+  liveCharts.push(new Chart(makeCanvas(slot, `Achievement gauge: ${shown}% of 100%`), {
     type: 'doughnut',
     data: {
-      labels: ['GFP', 'GAH'],
+      labels: ['Achieved', 'Remaining'],
       datasets: [{
-        data: [result.gfp, result.gah],
-        backgroundColor: [C.gfp, C.gah],
-        borderColor: '#ffffff',
-        borderWidth: 2
-      }]
-    },
-    options: chartOptions({
-      cutout: '62%',
-      plugins: {
-        legend: { position: 'right', labels: { color: C.text, font: { size: 12 } } },
-        tooltip: { enabled: true }
-      }
-    })
-  }));
-}
-
-// ---- Match rate gauge (semicircle with live % in the middle) ----
-function gauge(slot, result) {
-  const pct = Math.round(result.matchRate * 100);
-  const zoneColor = pct >= 80 ? C.green : pct >= 50 ? C.gold : C.red;
-  liveCharts.push(new Chart(makeCanvas(slot, `Match rate gauge: ${pct}% of 100%`), {
-    type: 'doughnut',
-    data: {
-      labels: ['Matched', 'Remaining'],
-      datasets: [{
-        data: [pct, 100 - pct],
-        backgroundColor: [zoneColor, C.track],
+        data: [data, 100 - shown],
+        backgroundColor: [zone, C.track],
         borderWidth: 0,
         circumference: 180,
         rotation: 270
       }]
     },
-    options: chartOptions({
+    options: baseOptions({
       cutout: '72%',
       plugins: { legend: { display: false }, tooltip: { enabled: false } }
     })
   }));
-
   const value = document.createElement('div');
   value.className = 'gauge-value';
-  value.textContent = `${pct}%`;
+  value.textContent = `${shown}%`;
   slot.classList.add('gauge-slot');
   slot.appendChild(value);
 }
 
-// ---- Category breakdowns ----
-function categoryChart(slot, title, entries, color, axis, ariaLabel) {
-  if (!entries.length) return emptyChart(slot, `Nothing to chart for ${title.toLowerCase()}.`);
-  const TOP_N = 8;
-  const shown = entries.slice(0, TOP_N);
-  const axisOptions = axis === 'y'
-    ? { indexAxis: 'y', scales: { x: { grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } }, y: { grid: { display: false }, ticks: { color: C.text } } } }
-    : { indexAxis: 'x', scales: { y: { beginAtZero: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } }, x: { grid: { display: false }, ticks: { color: C.text, maxRotation: 40 } } } };
-
-  liveCharts.push(new Chart(makeCanvas(slot, ariaLabel), {
-    type: 'bar',
+// ---- GFP / GAH / other mix ----
+function mixDonut(slot, records) {
+  const counts = { GFP: 0, GAH: 0, OTHER: 0 };
+  records.forEach((r) => { counts[r.tech || 'OTHER'] += 1; });
+  const labels = Object.keys(counts).filter((k) => counts[k] > 0 && !(k === 'OTHER' && counts.OTHER === 0));
+  if (!labels.length) return emptyChart(slot, 'No work orders in this feed.');
+  const colors = { GFP: C.gfp, GAH: C.gah, OTHER: C.other };
+  liveCharts.push(new Chart(makeCanvas(slot,
+    `Work order mix: ${counts.GFP} GFP, ${counts.GAH} GAH${counts.OTHER ? `, ${counts.OTHER} unclassified` : ''}`), {
+    type: 'doughnut',
     data: {
-      labels: shown.map((entry) => entry.label),
+      labels,
       datasets: [{
-        data: shown.map((entry) => entry.count),
-        backgroundColor: color,
-        borderRadius: 3,
-        categoryPercentage: 0.72
+        data: labels.map((k) => counts[k]),
+        backgroundColor: labels.map((k) => colors[k]),
+        borderColor: '#ffffff',
+        borderWidth: 2
       }]
     },
-    options: chartOptions({
-      ...axisOptions,
-      plugins: { legend: { display: false }, tooltip: { enabled: true } }
-    })
-  }));
-}
-
-// ---- Top agents stacked bar ----
-function stackedAgents(slot, agents) {
-  if (!agents.length) return emptyChart(slot, 'No agent data in this feed.');
-  liveCharts.push(new Chart(makeCanvas(slot, 'Top agents stacked bar of GFP and GAH work orders'), {
-    type: 'bar',
-    data: {
-      labels: agents.map((agent) => agent.agentName || agent.agentCode || 'Unknown'),
-      datasets: [
-        { label: 'GFP', data: agents.map((agent) => agent.gfp), backgroundColor: C.gfp, borderRadius: 2 },
-        { label: 'GAH', data: agents.map((agent) => agent.gah), backgroundColor: C.gah, borderRadius: 2 }
-      ]
-    },
-    options: chartOptions({
-      indexAxis: 'y',
-      scales: {
-        x: { stacked: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } },
-        y: { stacked: true, grid: { display: false }, ticks: { color: C.text } }
-      },
+    options: baseOptions({
+      cutout: '62%',
       plugins: {
-        legend: { position: 'bottom', labels: { color: C.text, font: { size: 12 } } }
+        legend: { position: 'right', labels: { color: C.text, font: { size: 12 } } }
       }
     })
   }));
 }
 
-export function mountCharts(root, result) {
+// ---- daily pacing bars (completed per day of month) ----
+function dailyBars(slot, dailyPerformance, color = C.purple) {
+  if (!dailyPerformance.length) return emptyChart(slot, 'No completed work orders yet.');
+  liveCharts.push(new Chart(makeCanvas(slot, 'Bar chart of completed work orders by day of month'), {
+    type: 'bar',
+    data: {
+      labels: dailyPerformance.map((d) => d.day),
+      datasets: [{
+        label: 'Completed',
+        data: dailyPerformance.map((d) => d.actual),
+        backgroundColor: color,
+        borderRadius: 3,
+        categoryPercentage: 0.8
+      }]
+    },
+    options: baseOptions({
+      scales: {
+        y: { beginAtZero: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: C.text } }
+      },
+      plugins: { legend: { display: false } }
+    })
+  }));
+}
+
+// ---- territory performance (actual bars vs distributed target bars) ----
+function territoryBars(slot, territoryPerformance) {
+  if (!territoryPerformance.length) return emptyChart(slot, 'No completed work orders to chart.');
+  liveCharts.push(new Chart(makeCanvas(slot, 'Territory performance: actual completions vs distributed targets'), {
+    type: 'bar',
+    data: {
+      labels: territoryPerformance.map((t) => t.territory),
+      datasets: [
+        {
+          label: 'Actual',
+          data: territoryPerformance.map((t) => t.actual),
+          backgroundColor: C.gah,
+          borderRadius: 3
+        },
+        {
+          label: 'Target (shared)',
+          data: territoryPerformance.map((t) => t.target),
+          backgroundColor: C.target,
+          borderRadius: 3
+        }
+      ]
+    },
+    options: baseOptions({
+      scales: {
+        y: { beginAtZero: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: C.text } }
+      },
+      plugins: { legend: { position: 'bottom', labels: { color: C.text, font: { size: 12 } } } }
+    })
+  }));
+}
+
+// ---- month vs month: side-by-side daily completions ----
+function vsDailyBars(slot, currentDaily, previousDaily) {
+  const dayMap = (entries) => {
+    const map = {};
+    entries.forEach((d) => { map[d.day] = d.actual; });
+    return map;
+  };
+  const cur = dayMap(currentDaily);
+  const prev = dayMap(previousDaily);
+  const days = Array.from(new Set([...Object.keys(cur), ...Object.keys(prev)]))
+    .sort((a, b) => Number(a) - Number(b));
+
+  liveCharts.push(new Chart(makeCanvas(slot, 'Grouped bar chart comparing completions by day of month between the two months'), {
+    type: 'bar',
+    data: {
+      labels: days.map((d) => `${d}`),
+      datasets: [
+        {
+          label: 'This month',
+          data: days.map((d) => cur[d] || 0),
+          backgroundColor: C.purple,
+          borderRadius: 2
+        },
+        {
+          label: 'Last month',
+          data: days.map((d) => prev[d] || 0),
+          backgroundColor: C.target,
+          borderRadius: 2
+        }
+      ]
+    },
+    options: baseOptions({
+      scales: {
+        y: { beginAtZero: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: C.text } }
+      },
+      plugins: { legend: { position: 'bottom', labels: { color: C.text, font: { size: 12 } } } }
+    })
+  }));
+}
+
+export function mountCharts(root, bundle) {
   destroyCharts();
+  const { current, previous } = bundle;
   root.querySelectorAll('[data-chart]').forEach((slot) => {
     const kind = slot.dataset.chart;
-    if (kind === 'donut') donut(slot, result);
-    if (kind === 'gauge') gauge(slot, result);
-    if (kind === 'status') categoryChart(slot, 'Status', result.statusCount, C.gfp, 'x', 'Work orders by status');
-    if (kind === 'area') categoryChart(slot, 'Area', result.areaCount, C.gah, 'y', 'Work orders by area');
-    if (kind === 'territory') categoryChart(slot, 'Territory', result.territoryCount, C.purple, 'y', 'Work orders by territory');
-    if (kind === 'facility') categoryChart(slot, 'Facility', result.facilityCount, C.green, 'y', 'Work orders by facility');
-    if (kind === 'agents') stackedAgents(slot, result.agents.slice(0, 10));
+    if (kind === 'gauge') gauge(slot, current.kpis.achievement);
+    if (kind === 'donut') mixDonut(slot, current.records);
+    if (kind === 'daily') dailyBars(slot, current.dailyPerformance);
+    if (kind === 'territory') territoryBars(slot, current.territoryPerformance);
+    if (kind === 'vs-daily') {
+      if (previous && previous.dailyPerformance.length) {
+        vsDailyBars(slot, current.dailyPerformance, previous.dailyPerformance);
+      } else {
+        emptyChart(slot, 'Feed a previous month\'s VALIDATION export to compare daily pacing.');
+      }
+    }
   });
 }
