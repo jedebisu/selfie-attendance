@@ -443,6 +443,17 @@ select.topbar-btn.month-badge { appearance: auto; padding-right: 8px; }
 
 .two-col .panel { margin-top: 0; }
 
+.pace-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+}
+
+.pace-row .panel { margin-top: 0; margin-bottom: 14px; }
+
+.donut-box { height: 220px; }
+.weekly-box { height: 240px; }
+
 .chart-empty {
   height: 100%;
   display: flex;

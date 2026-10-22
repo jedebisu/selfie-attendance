@@ -336,7 +336,9 @@ export function mountCharts(root, bundle) {
   root.querySelectorAll('[data-chart]').forEach((slot) => {
     const kind = slot.dataset.chart;
     if (kind === 'gauge') gauge(slot, current.kpis.achievement);
-    if (kind === 'donut') mixDonut(slot, current.records);
+    if (kind === 'donut') mixDonut(slot, current.records.filter(
+      (r) => String(r.status || '').trim().toUpperCase() === 'COMPLETED'
+    ));
     if (kind === 'daily') dailyBars(slot, current.dailyPerformance);
     if (kind === 'territory') territoryBars(slot, current.territoryPerformance);
     if (kind === 'area') territoryBars(slot, current.areaPerformance, 'area');

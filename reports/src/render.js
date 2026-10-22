@@ -3,6 +3,7 @@
 // KPI cards, DCOS 1 / DCOS 2 / MTD tables with insights, territory/daily
 // panels, and a Month-vs-Month page (kept per user decision).
 import { mountCharts } from './charts.js';
+import { pctChange } from './compute.js';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -248,7 +249,38 @@ function chartPanel(title, chartKind, className) {
   return panel;
 }
 
-function overviewPage(current) {
+function weeklyTable(currentWeekly, previousWeekly) {
+  const wrap = el('div', 'table-scroll');
+  const table = el('table', 'data-table');
+  const thead = el('thead');
+  const hr = document.createElement('tr');
+  ['WEEK', 'THIS MONTH', 'PREVIOUS MONTH', 'CHANGE VS PREV WEEK'].forEach((h) => hr.appendChild(el('th', null, h)));
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = el('tbody');
+  currentWeekly.forEach((w, i) => {
+    const prev = previousWeekly && previousWeekly.length
+      ? previousWeekly.find((p) => p.week === w.week)
+      : null;
+    const prevWeek = i > 0 ? currentWeekly[i - 1].actual : null;
+    const change = prevWeek !== null ? pctChange(w.actual, prevWeek) : null;
+    const tr = el('tr', i % 2 ? 'alt' : null);
+    const chip = change === null
+      ? '—'
+      : `${change >= 0 ? '▲' : '▼'} ${pct1(Math.abs(change))}`;
+    [
+      w.week,
+      int(w.actual),
+      prev ? int(prev.actual) : '—',
+      chip
+    ].forEach((c, j) => tr.appendChild(el('td', j === 0 ? 'name-cell' : null, c)));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  return wrap;
+}
+
+function overviewPage(current, previous) {
   const page = el('section', 'page');
   page.dataset.page = 'overview';
 
@@ -261,6 +293,19 @@ function overviewPage(current) {
     `TARGET: All BDEs — GFP ${fmtTarget(current.kpis.gfpTarget)} · GAH ${fmtTarget(current.kpis.gahTarget)} = ${fmtTarget(current.kpis.target)} | DCOS 1 = 60% · DCOS 2 = 40%`));
   current.dcos.forEach((w) => dcos.appendChild(dcosWindowPanel(w)));
   page.appendChild(dcos);
+
+  const paceRow = el('section', 'pace-row');
+  paceRow.appendChild(chartPanel('PACE — CUMULATIVE VS TARGET', 'pace', 'pace-box'));
+  paceRow.appendChild(chartPanel('GFP / GAHT MIX — COMPLETED', 'donut', 'donut-box'));
+  page.appendChild(paceRow);
+
+  const weekly = el('section', 'panel wide');
+  weekly.appendChild(el('h3', 'panel-title', 'WEEK-ON-WEEK PERFORMANCE'));
+  const weeklyChart = el('div', 'chart-box weekly-box');
+  weeklyChart.dataset.chart = 'weekly';
+  weekly.appendChild(weeklyChart);
+  weekly.appendChild(weeklyTable(current.weekly, previous?.weekly));
+  page.appendChild(weekly);
 
   const bottom = el('section', 'two-col');
   bottom.appendChild(chartPanel('PERFORMANCE BY TERRITORY', 'territory', 'territory-box'));
@@ -442,6 +487,7 @@ function agentsPage(current) {
   const page = el('section', 'page');
   page.dataset.page = 'agents';
   page.appendChild(el('h2', 'page-heading', 'AGENT PRODUCTIVITY — COMPLETED WORK ORDERS'));
+  page.appendChild(chartPanel('COMPLETED BY AGENT', 'agents', 'agents-chart'));
   const panel = el('div', 'panel wide');
   panel.appendChild(agentsTable(current.agentProductivity));
   page.appendChild(panel);
@@ -541,7 +587,7 @@ export function renderDashboard(container, bundle, handlers) {
 }
 
 function switchPage(bundle) {
-  const pages = { overview: overviewPage, bbsp: bbspPage, records: recordsPage, agents: agentsPage };
+  const pages = { bbsp: bbspPage, records: recordsPage, agents: agentsPage };
   const { current, previous, activePage } = bundle;
   let page;
   if (activePage === 'vsmonth') {
@@ -550,8 +596,10 @@ function switchPage(bundle) {
     page = simpleSharePage('byarea', 'BY AREA', current.areaPerformance, 'area', 'No completed work orders with an area in this view.');
   } else if (activePage === 'byterritory') {
     page = simpleSharePage('byterritory', 'BY TERRITORY', current.territoryPerformance, 'territory', 'No completed work orders with a territory in this view.');
+  } else if (activePage === 'overview') {
+    page = overviewPage(current, previous);
   } else {
-    page = (pages[activePage] || overviewPage)(current);
+    page = (pages[activePage] || overviewPage)(current, previous);
   }
   page.classList.add('active');
   return page;
