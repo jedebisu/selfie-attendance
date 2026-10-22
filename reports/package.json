@@ -1,0 +1,20 @@
+{
+  "name": "reports",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "EBISU Sales Report — GFP & GAH work order dashboard fed by a VALIDATION sheet CSV export",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.7",
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}

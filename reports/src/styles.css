@@ -1,0 +1,15 @@
+/* EBISU Sales Report styles — THEME palette mirrors the Apps Script dashboard.
+   Placeholder — full styling lands with the plan's Task 4. */
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  background: #eef2fa;
+}
+
+.boot {
+  padding: 40px;
+  text-align: center;
+  color: #0b2545;
+  font-weight: 600;
+}
