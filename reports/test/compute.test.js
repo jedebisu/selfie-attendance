@@ -127,6 +127,13 @@ test('parseSheetDate returns null for junk', () => {
   assert.equal(parseSheetDate(undefined), null);
 });
 
+test('parseCsv tolerates a UTF-8 BOM on the header row', () => {
+  const withBom = '\uFEFF' + CSV_TEXT;
+  const out = parseCsv(withBom);
+  assert.equal(out[0][0], ' JOB ORDER ');
+  assert.equal(out[1][0], 'gfp01234');
+});
+
 test('normalize + classify mirror the Apps Script rules', () => {
   assert.equal(normalizeWorkOrder('  gfp123 '), 'GFP123');
   assert.equal(normalizeWorkOrder(undefined), '');

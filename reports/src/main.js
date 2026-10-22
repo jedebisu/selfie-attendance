@@ -7,15 +7,23 @@ const DEFAULT_CSV_URL = 'data/validation.csv';
 
 // Renders one fully-fed dashboard pass: parse -> compute -> paint.
 export async function renderFromCsv(text, fileName) {
-  const result = computeDashboard(parseCsv(text));
-  app.innerHTML = '';
+  try {
+    const result = computeDashboard(parseCsv(text));
+    app.innerHTML = '';
 
-  const banner = document.createElement('div');
-  banner.className = 'feed-banner';
-  banner.textContent = `Fed by ${fileName}`;
-  app.appendChild(banner);
+    const banner = document.createElement('div');
+    banner.className = 'feed-banner';
+    banner.textContent = `Fed by ${fileName}`;
+    app.appendChild(banner);
 
-  renderDashboard(app, result, { fileName });
+    renderDashboard(app, result, { fileName });
+  } catch (error) {
+    console.error(`Could not build the report from ${fileName}:`, error);
+    showEmptyState(
+      'Could not read that file',
+      `"${fileName}" is not a VALIDATION sheet export. Export it again with File ▸ Download ▸ Comma-separated values and confirm the columns start with JOB ORDER, RESULT, SUBSCRIBER...`
+    );
+  }
 }
 
 function showEmptyState(message, hint) {
