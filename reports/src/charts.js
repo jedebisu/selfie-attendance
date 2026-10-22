@@ -151,22 +151,22 @@ function dailyBars(slot, dailyPerformance, color = C.purple) {
 }
 
 // ---- territory performance (actual bars vs distributed target bars) ----
-function territoryBars(slot, territoryPerformance) {
-  if (!territoryPerformance.length) return emptyChart(slot, 'No completed work orders to chart.');
-  liveCharts.push(new Chart(makeCanvas(slot, 'Territory performance: actual completions vs distributed targets'), {
+function territoryBars(slot, rows, labelKey = 'territory') {
+  if (!rows.length) return emptyChart(slot, 'No completed work orders to chart.');
+  liveCharts.push(new Chart(makeCanvas(slot, 'Performance: actual completions vs distributed targets'), {
     type: 'bar',
     data: {
-      labels: territoryPerformance.map((t) => t.territory),
+      labels: rows.map((t) => t[labelKey]),
       datasets: [
         {
           label: 'Actual',
-          data: territoryPerformance.map((t) => t.actual),
+          data: rows.map((t) => t.actual),
           backgroundColor: C.gah,
           borderRadius: 3
         },
         {
           label: 'Target (shared)',
-          data: territoryPerformance.map((t) => t.target),
+          data: rows.map((t) => t.target),
           backgroundColor: C.target,
           borderRadius: 3
         }
@@ -232,7 +232,7 @@ export function mountCharts(root, bundle) {
     if (kind === 'donut') mixDonut(slot, current.records);
     if (kind === 'daily') dailyBars(slot, current.dailyPerformance);
     if (kind === 'territory') territoryBars(slot, current.territoryPerformance);
-    if (kind === 'area') territoryBars(slot, current.areaPerformance);
+    if (kind === 'area') territoryBars(slot, current.areaPerformance, 'area');
     if (kind === 'vs-daily') {
       if (previous && previous.dailyPerformance.length) {
         vsDailyBars(slot, current.dailyPerformance, previous.dailyPerformance);
