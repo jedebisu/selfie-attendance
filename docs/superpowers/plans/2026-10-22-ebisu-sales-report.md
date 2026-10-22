@@ -220,3 +220,60 @@ link-shared sheet tabs exported manually as CSV. Feeding = replace files in
 - npm test green; build; desktop screenshots incl. vs-last-month tab; fresh reviewer
   (subagent if recovered; otherwise documented self-review); finishing menu.
 
+
+---
+
+# v3 REVISION (2026-10-22) — mirror the deployed Apps Script look
+
+**Trigger (user, with screenshot):** "make it look like this — this is the deployed
+script from appscript." The reference is the deployed "T6A Broadband Dashboard"
+(the same target-driven script, another brand). Presentation supersedes the v2
+single-scroll layout; the data model (v2 formulas) still stands.
+
+## v3 layout spec (from the screenshot)
+
+- Dark navy top bar: "EBISU Sales Report" (EBISU mark, NOT the Globe logo), data-as-of
+  + record count, **Reload data** button (re-fetch CSVs — replaces Sync Now),
+  month badge (data month), **Upload CSV** button (real file picker; drag-drop also kept).
+- Left sidebar pages: Overview · BBSP · By Area · By Territory · Records ·
+  Agent Productivity · **Month vs Month** (kept — user decision).
+- Filter bar (global, re-slices every page + targets): BDE · BBSP · TECH dropdowns,
+  search box, Reset.
+- Five KPI cards (user decision): GFP ACTUAL (pink) · GAH ACTUAL (blue) · TARGET (purple)
+  · ACHIEVEMENT (green) · DAILY AVERAGE (gold). NOT FOUND lives in Records + alerts.
+- **Month to date panel**: DCOS 1 (day 1–15) / DCOS 2 (day 16–31) / MTD tables
+  (columns KPI | Installed | Target | Ach | Var | Trend (vol) | Trend Ach | Req Daily)
+  + amber DCOS/MTD INSIGHTS boxes. TECH targets: GFP 2,472 / GAH 870 = 3,342.
+- Performance by territory + Daily performance panels (charts kept).
+
+## v3 DCOS formulas (reverse-engineered from the generated PERFORMANCE tab + screenshot)
+
+- Windows: DCOS 1 = day 1–15 @ 60% of each tech's monthly target; DCOS 2 = 16–31 @ 40%;
+  MTD = 100%. (Screen: GFP 2,472×.6 = 1,483.2 · GAH 870×.6 = 522.)
+- Installed = COMPLETED rows in the window by LAST UPDATE day-of-month per tech.
+- Ach = installed ÷ target; Var = target − installed.
+- Remaining days = windowEndDay − daysElapsed (clamped 0); Req Daily = remaining > 0 ? Var ÷ remaining : 0.
+- Trend (vol) = previous fed month's COMPLETED count for that tech (full month);
+  Trend Ach = Trend ÷ this row's target. No previous month fed → trend cells "—"
+  (deviation: deployed shows 0; empty is more honest for a CSV feed).
+- Insights strings mirror the deployed texts ("N% trend vs. DCOS 1 TAR of …",
+  "… variance to hit …", "N remaining day(s) for …"); MTD adds GFP/GAH AVG DAILY.
+- Note: the user's own workbook's PERFORMANCE tab has column-shifted targets (old
+  script artifact) — the SCREENSHOT math is the spec, not that tab.
+
+## v3 additional semantics
+
+- Filters apply to records AND to targets: BDE → that BDE's targets; BBSP → that
+  BBSP's BBSP-TARGET row; TECH → that tech's column; search = substring across
+  subscriber/address/territory/area/facility/agent/job order/bbsp.
+- Month picker lists fed months (default newest); Month vs Month compares
+  selected vs the previous fed month. Badge shows "CSV FED".
+- By Area = per-area completions + share-distributed target; Agent Productivity =
+  per-agent completed GFP/GAH/total with BBSP + BDE.
+
+## v3 tasks
+
+### Task 12: compute v3 — DCOS, filters, tech targets, agent productivity (TDD)
+### Task 13: app shell + pages + filter bar (render/main/styles rebuild)
+### Task 14: verify vs reference (screenshots beside the deploy), build, review, finish
+
