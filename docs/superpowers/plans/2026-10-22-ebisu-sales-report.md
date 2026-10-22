@@ -1,5 +1,15 @@
 # EBISU Sales Report (v1) Implementation Plan
 
+> ⚠️ **SUPERSEDED IN PART — v2 REVISION (2026-10-22).** The user revealed the original
+> Apps Script paste was the wrong blueprint. The correct system is the target-driven
+> "Globe Broadband Performance Dashboard" script. Tasks 1–6 scaffolding/styling/CSV-feed
+> mechanics survive; the **sections and counting formulas are rebuilt** (v1 counted
+> RESULT=FOUND rows; v2 counts STATUS=COMPLETED rows against monthly TARGETS). See the
+> `v2 REVISION` section at the bottom of this file. The live data source is the user's
+> link-shared Google Sheet (`1J8KozrR0A-…`): VALIDATION (76 rows, Sep), TARGETS
+> (per-BDE), BBSP TARGETS (12 rows), AGENT POOL (232 agents). Feeding stays **manual CSV**;
+> no tab named "BDE" exists and none is needed (AGENT POOL carries each agent's BDE).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans (native — chosen by the user: "go build now", implemented in-session).
 
 **Goal:** A local, browser-viewable version of the FSM D-1 Command Center dashboard, branded "EBISU Sales Report", fed by one CSV (Google Sheets VALIDATION export).
@@ -113,3 +123,100 @@
 - [ ] **Step 2:** Dev server in background; full-page screenshot at desktop width; console error count = 0.
 - [ ] **Step 3:** Report to the user: the local URL, the run command (`cd reports && npm install && npm run dev`), and how to swap in their real CSV (File ▸ Download ▸ CSV on VALIDATION → drag onto the page, or replace `reports/public/data/validation.csv`).
 - [ ] **Step 4:** Commit any final fixes.
+
+---
+
+# v2 REVISION (2026-10-22) — target-driven rebuild
+
+**Spec change (user-confirmed):** The site mirrors the "Globe Broadband Performance Dashboard"
+Apps Script (the *correct* script), not the old D-1 Command Center. Data: user's
+link-shared sheet tabs exported manually as CSV. Feeding = replace files in
+`reports/public/data/` or drag files onto the page; **no Google/network dependency at runtime.**
+
+## v2 Sections (user-approved: "exactly these 8" + one addition)
+
+1. Title band — "EBISU Sales Report", month of data, data-as-of date, page-refresh time.
+2. Six KPI cards — TOTAL WORK ORDERS · ACTUAL (COMPLETED) · MONTHLY TARGET · ACHIEVEMENT % · DAILY AVERAGE · NOT FOUND.
+3. Monthly target panel — target vs actual vs remaining + achievement dial.
+4. Daily performance — COMPLETED work orders by day-of-month (bar chart).
+5. Territory performance — completions per territory + share-distributed monthly target.
+6. Per-BDE table — GFP/GAH/total targets per BDE (+ actual where mappable).
+7. Per-BBSP table — same for every BBSP (actuals matched via AGENT POOL).
+8. All-records table — the full VALIDATION detail list.
+9. **"vs LAST MONTH" tab** (user addition) — compare the fed month against a second
+   fed VALIDATION CSV (previous month): KPI deltas + day-of-month side-by-side bars;
+   friendly empty state when only one month is fed. Stored per data-month.
+
+## v2 Counting formulas (mirroring the correct script verbatim)
+
+- Records = rows with non-blank JOB ORDER (same 15 columns as before).
+- `actual` = rows where `STATUS.trim().toUpperCase() === 'COMPLETED'` (NOT found-classified).
+- `notFound` = rows where RESULT (normalized) === 'NOT FOUND'.
+- Territorial actual = COMPLETED count per territory; territory target = monthly target
+  × (territory completions ÷ total completions), rounded.
+- Daily performance = COMPLETED by day-of-month, taken from LAST UPDATE (only days with data).
+- `target` = Σ per-BDE TARGET column values (TARGETS tab: BDE | GFP TARGET | GAH TARGET | TOTAL).
+  Numbers may carry commas/quotes ("1,362") — strip non-digits before Number().
+- `achievement` = actual ÷ target; `remaining` = max(target − actual, 0).
+- Per-record BBSP = AGENT POOL match (by agent code, then name); per-record BDE =
+  AGENT POOL's BDE column (no separate BDE tab exists — AGENT POOL wins).
+- Agent-pool CSV shape: BBSP | AGENT CODE | AGENT NAME | BDE (232 live rows).
+
+## Deliberate deviations from the script (honest-for-a-CSV choices)
+
+- Month label = the data's own month (max LAST UPDATE), not the viewer's wall clock —
+  a fed CSV has no "now"; script labeled by server date.
+- `daysElapsed` = data-as-of day-of-month (not today's date), same reason.
+- Targets optional: if TARGETS/BBSP TARGETS CSVs absent, target-dependent panels show
+  "no targets fed yet" instead of failing.
+
+## v2 Feeding (manual, per user's confirmation "Keep manual CSV feeding")
+
+- Default files (all optional except VALIDATION): `public/data/validation.csv`,
+  `public/data/bde-targets.csv`, `public/data/bbsp-targets.csv`, `public/data/agent-pool.csv`.
+- Drag-drop recognizes each file type by its header row (15-col VALIDATION; BDE|…
+  TARGET…; BBSP|…TOTAL TARGET; BBSP|AGENT CODE|AGENT NAME|BDE) — files may be dropped
+  all at once. VALIDATION files are routed by their data month (this month vs last).
+
+## v2 Review Focus (new pins)
+
+1. `ACTUAL counts only STATUS COMPLETED` — not found-classified (Task 7 test).
+2. `Comma-formatted targets ("1,362") parse` (Task 7 test).
+3. `TARGETS header variants: 4th column may be TARGET or TOTAL (or nothing)` (Task 7 test).
+4. `Territory target share distribution sums to monthly total (± rounding)` (Task 7 test).
+5. `Daily performance only includes days with data, keyed by day-of-month` (Task 7 test).
+6. `Feed recognition by header shape` — one test per tab type + one unknown-shape
+   rejection (Task 8 test).
+7. Mixed-case statuses ("Completed") normalize to COMPLETED (Task 7 test).
+
+## v2 Tasks
+
+### Task 7: compute v2 (pure logic, tested)
+- Modify `reports/src/compute.js`; rewrite `reports/test/compute.test.js` (keep parseCsv/BOM/
+  header-case/date tests, replace v1 metric tests).
+- Produces: `computeDashboard(data, extras)` → KPI set, target summary, dailyPerformance,
+  territoryPerformance, bdeTargets, bbspTargets, records (with bbsp/bde), monthLabel, dataAsOf;
+  plus `parseBdeTargets`, `parseBspbTargets`, `parseAgentPool`, `detectFeedType` helpers.
+- Reviews Focus pins 1–5, 7 → TDD RED→GREEN; commit `feat: target-driven computation (v2)`.
+
+### Task 8: feed layer for four CSV types + drop recognition
+- Multi-file fetch on boot (404-tolerant for the three optional files); drop handler
+  classifies by header (`detectFeedType`) and feeds the right store; multiple files per drop.
+- Review Pin 6. TDD for the pure recognition helper; browser-verified for the wiring.
+- Commit `feat: four-tab CSV feed with type recognition`.
+
+### Task 9: render the 9 sections (8 + vs-last-month tab)
+- Rebuild `render.js` sections + `styles.css` + tab switcher; `charts.js`: daily bars,
+  territory bars w/ target overlay, achievement gauge, month-comparison bars.
+- Browser-verified; commit `feat: target-driven dashboard sections`.
+
+### Task 10: sample + real data hygiene
+- Commit *fake* sample CSVs for all four types (public repo!). On this Mac: place the
+  REAL September exports in `public/data/` and gitignore those exact filenames —
+  real customer data must never be pushed to the public repo.
+- Commit `chore: sample feeds for four tabs`.
+
+### Task 11: verification sweep + review
+- npm test green; build; desktop screenshots incl. vs-last-month tab; fresh reviewer
+  (subagent if recovered; otherwise documented self-review); finishing menu.
+
