@@ -452,7 +452,23 @@ select.topbar-btn.month-badge { appearance: auto; padding-right: 8px; }
 .pace-row .panel { margin-top: 0; margin-bottom: 14px; }
 
 .donut-box { height: 220px; }
-.weekly-box { height: 240px; }
+
+/* deployed-style weekly blocks: three mini tables side by side */
+.wk-block {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 0.9fr;
+  gap: 12px;
+  overflow-x: auto;
+}
+
+.wk-block .wk-mini { min-width: 330px; }
+
+.wk-block .wk-mini th,
+.wk-block .wk-mini td { white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .wk-block { grid-template-columns: 1fr; }
+}
 
 .chart-empty {
   height: 100%;

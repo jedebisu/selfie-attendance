@@ -249,35 +249,86 @@ function chartPanel(title, chartKind, className) {
   return panel;
 }
 
-function weeklyTable(currentWeekly, previousWeekly) {
-  const wrap = el('div', 'table-scroll');
-  const table = el('table', 'data-table');
+const one = (x) => Number(x).toFixed(1);
+
+// ---- deployed-style weekly blocks (APPS GEN / INSTALLED) ----------------
+// Mirrors the T6A sheet: three mini-tables per block — Actuals,
+// Average Daily (LM | weeks | MTD) and vs Last Week chips.
+function miniTable(headers, rows) {
+  const table = el('table', 'data-table wk-mini');
   const thead = el('thead');
   const hr = document.createElement('tr');
-  ['WEEK', 'THIS MONTH', 'PREVIOUS MONTH', 'CHANGE VS PREV WEEK'].forEach((h) => hr.appendChild(el('th', null, h)));
+  headers.forEach((h) => hr.appendChild(el('th', null, h)));
   thead.appendChild(hr);
   table.appendChild(thead);
   const tbody = el('tbody');
-  currentWeekly.forEach((w, i) => {
-    const prev = previousWeekly && previousWeekly.length
-      ? previousWeekly.find((p) => p.week === w.week)
-      : null;
-    const prevWeek = i > 0 ? currentWeekly[i - 1].actual : null;
-    const change = prevWeek !== null ? pctChange(w.actual, prevWeek) : null;
+  rows.forEach((row, i) => {
     const tr = el('tr', i % 2 ? 'alt' : null);
-    const chip = change === null
-      ? '—'
-      : `${change >= 0 ? '▲' : '▼'} ${pct1(Math.abs(change))}`;
-    [
-      w.week,
-      int(w.actual),
-      prev ? int(prev.actual) : '—',
-      chip
-    ].forEach((c, j) => tr.appendChild(el('td', j === 0 ? 'name-cell' : null, c)));
+    tr.appendChild(el('td', 'name-cell', row.label));
+    row.cells.forEach((cell) => {
+      const td = el('td');
+      if (cell.cls) {
+        td.appendChild(el('span', `vs-chip ${cell.cls}`, cell.text));
+      } else {
+        td.textContent = cell.text;
+      }
+      tr.appendChild(td);
+    });
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  return wrap;
+  return table;
+}
+
+function weeklyBlock(title, sub, weeks, wkRows, monthDays, lm, prevMonthDays) {
+  const weekLabels = weeks.map((w) => w.week);
+  const avgBy = (rowKey) => wkRows.map((r) => r[rowKey] / (weeks.find((w) => w.week === r.week)?.days || 1));
+  const averages = { total: avgBy('total'), gfp: avgBy('gfp'), gah: avgBy('gah') };
+
+  const actualsRows = [
+    { label: 'DAYS', cells: weekLabels.map((l, i) => ({ text: String(weeks[i].days) }))
+      .concat([{ text: String(monthDays) }]) },
+    ...['total', 'gfp', 'gah'].map((key) => ({
+      label: key.toUpperCase(),
+      cells: wkRows.map((r) => ({ text: int(r[key]) }))
+        .concat([{ text: int(wkRows.reduce((s, r) => s + r[key], 0)) }])
+    }))
+  ];
+
+  const lmCell = (key) => lm ? { text: int(lm[key]) } : { text: '—' };
+  const monthTotal = (key) => one(wkRows.reduce((s, r) => s + r[key], 0) / (monthDays || 1));
+  const avgDailyRows = ['total', 'gfp', 'gah'].map((key) => ({
+    label: key.toUpperCase(),
+    cells: [lmCell(key)]
+      .concat(averages[key].map((a, i) => ({ text: one(a) })))
+      .concat([{ text: (weeks.length ? monthTotal(key) : '—') }])
+  }));
+
+  const chip = (change) => change === null
+    ? ({ text: '—' })
+    : ({
+      text: `${change > 0 ? '▲' : change < 0 ? '▼' : '—'} ${pct1(Math.abs(change))}`,
+      cls: change > 0 ? 'better' : change < 0 ? 'worse' : 'flat'
+    });
+  const vsRows = ['total', 'gfp', 'gah'].map((key) => ({
+    label: key.toUpperCase(),
+    cells: wkRows.map((_, i) => {
+      const prevAvg = i > 0
+        ? averages[key][i - 1]
+        : (lm && prevMonthDays > 0 ? lm[key] / prevMonthDays : null);
+      return chip(prevAvg === null ? null : pctChange(averages[key][i], prevAvg));
+    })
+  }));
+
+  const block = el('section', 'panel wide');
+  block.appendChild(el('h3', 'panel-title', title));
+  block.appendChild(el('p', 'section-sub', sub));
+  const grid = el('div', 'wk-block');
+  grid.appendChild(miniTable(['METRIC', ...weekLabels, 'MTD'], actualsRows));
+  grid.appendChild(miniTable(['METRIC', 'LM', ...weekLabels, 'MTD'], avgDailyRows));
+  grid.appendChild(miniTable(['METRIC', ...weekLabels], vsRows));
+  block.appendChild(grid);
+  return block;
 }
 
 function overviewPage(current, previous) {
@@ -299,13 +350,19 @@ function overviewPage(current, previous) {
   paceRow.appendChild(chartPanel('GFP / GAHT MIX — COMPLETED', 'donut', 'donut-box'));
   page.appendChild(paceRow);
 
-  const weekly = el('section', 'panel wide');
-  weekly.appendChild(el('h3', 'panel-title', 'WEEK-ON-WEEK PERFORMANCE'));
-  const weeklyChart = el('div', 'chart-box weekly-box');
-  weeklyChart.dataset.chart = 'weekly';
-  weekly.appendChild(weeklyChart);
-  weekly.appendChild(weeklyTable(current.weekly, previous?.weekly));
-  page.appendChild(weekly);
+  // APPS GEN block LM = previous month's all-records totals;
+  // INSTALLED LM = previous month's completed totals.
+  page.appendChild(weeklyBlock('WEEK-ON-WEEK — APPS GEN (BY DATE APPS GEN)',
+    `All work orders by DATE APPS GEN · LM = previous fed month's totals${previous ? ` (${previous.monthLabel})` : ''}`,
+    current.weeklyBlocks.weeks, current.weeklyBlocks.appsGen, current.monthDays,
+    previous?.appsGenMonthly || null, previous?.monthDays ?? 0));
+  page.appendChild(weeklyBlock('WEEK-ON-WEEK — INSTALLED (BY LAST UPDATE)',
+    `Completed work orders by LAST UPDATE · LM = previous fed month's installs${previous ? ` (${previous.monthLabel})` : ''}`,
+    current.weeklyBlocks.weeks, current.weeklyBlocks.installed, current.monthDays,
+    previous
+      ? { total: previous.kpis.actual, gfp: previous.kpis.gfpActual, gah: previous.kpis.gahActual }
+      : null,
+    previous?.monthDays ?? 0));
 
   const bottom = el('section', 'two-col');
   bottom.appendChild(chartPanel('PERFORMANCE BY TERRITORY', 'territory', 'territory-box'));

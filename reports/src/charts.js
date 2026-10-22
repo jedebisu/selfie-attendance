@@ -226,41 +226,6 @@ function paceLine(slot, pace) {
   }));
 }
 
-// ---- week-on-week: this month vs the previous fed month, per W1..W4 ----
-function weeklyBars(slot, currentWeekly, previousWeekly) {
-  if (!currentWeekly || !currentWeekly.length) {
-    return emptyChart(slot, 'Feed a VALIDATION export to see the weekly rhythm.');
-  }
-  const labels = currentWeekly.map((w) => w.week);
-  const datasets = [
-    {
-      label: 'This month',
-      data: currentWeekly.map((w) => w.actual),
-      backgroundColor: C.gold,
-      borderRadius: 3
-    }
-  ];
-  if (previousWeekly && previousWeekly.length) {
-    datasets.push({
-      label: 'Previous month',
-      data: labels.map((week) => previousWeekly.find((w) => w.week === week)?.actual || 0),
-      backgroundColor: C.gah,
-      borderRadius: 3
-    });
-  }
-  liveCharts.push(new Chart(makeCanvas(slot, 'Bar chart of completed work orders per week, this month and the previous fed month'), {
-    type: 'bar',
-    data: { labels, datasets },
-    options: baseOptions({
-      scales: {
-        y: { beginAtZero: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } },
-        x: { grid: { display: false }, ticks: { color: C.text } }
-      },
-      plugins: { legend: { position: 'bottom', labels: { color: C.text, font: { size: 12 } } } }
-    })
-  }));
-}
-
 // ---- agent comparison: horizontal bars, longest (top agent) on top ----
 function agentBars(slot, rows) {
   if (!rows.length) return emptyChart(slot, 'No completed work orders in this view yet.');
@@ -343,7 +308,6 @@ export function mountCharts(root, bundle) {
     if (kind === 'territory') territoryBars(slot, current.territoryPerformance);
     if (kind === 'area') territoryBars(slot, current.areaPerformance, 'area');
     if (kind === 'pace') paceLine(slot, current.pace);
-    if (kind === 'weekly') weeklyBars(slot, current.weekly, previous?.weekly);
     if (kind === 'agents') agentBars(slot, current.agentProductivity);
     if (kind === 'vs-daily') {
       if (previous && previous.dailyPerformance.length) {
