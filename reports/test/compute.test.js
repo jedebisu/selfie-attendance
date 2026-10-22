@@ -237,3 +237,125 @@ test('detectFeedType classifies each tab shape and rejects unknown headers', () 
   assert.equal(detectFeedType(['hello', 'world']), null);
   assert.equal(detectFeedType(norm(parseCsv('"BBSP","SOMETHING ELSE"\n"a","b"')[0])), null);
 });
+
+// ---------------- v3 pins: tech targets, DCOS, filters ----------------
+
+const BDE = { bdeTargets: parseBdeTargets(parseCsv(BDE_TARGETS_TEXT)) };
+const POOL = { agentPool: parseAgentPool(parseCsv(AGENT_POOL_TEXT)) };
+
+test('tech actuals and scoped tech targets (GFP 2,472 · GAH 870 = 3,342)', () => {
+  const result = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  assert.equal(result.kpis.gfpActual, 2);        // r1 + r7
+  assert.equal(result.kpis.gahActual, 1);        // r3 (7099…)
+  assert.equal(result.kpis.gfpTarget, 2472);     // 1362 + 1110
+  assert.equal(result.kpis.gahTarget, 870);      // 445 + 425
+  assert.equal(result.kpis.target, 3342);
+  assert.equal(result.kpis.actual, 4);           // includes unclassified r6
+});
+
+test('DCOS 1 = day 1–15 @ 60%, req daily 0 once the window has passed', () => {
+  const r = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  const w1 = r.dcos.find((w) => w.name === 'DCOS 1');
+  const gfp = w1.rows.find((row) => row.tech === 'GFP');
+  const gah = w1.rows.find((row) => row.tech === 'GAH');
+  const grand = w1.rows.find((row) => row.tech === 'Grand Total');
+  // completed in days 1-15: r1 GFP (10/05), r3 GAH (10/10)
+  assert.equal(gfp.installed, 1);
+  assert.equal(gah.installed, 1);
+  assert.ok(Math.abs(gfp.target - 1483.2) < 1e-9);   // 2472 * 0.6
+  assert.ok(Math.abs(gah.target - 522) < 1e-9);
+  assert.ok(Math.abs(grand.target - 2005.2) < 1e-9);
+  assert.ok(Math.abs(grand.variance - 2003.2) < 1e-9);
+  // dataAsOf day 28 > window end 15 → 0 remaining days → req daily 0
+  assert.equal(grand.reqDaily, 0);
+});
+
+test('DCOS 2 = day 16–31 @ 40% with working req-daily', () => {
+  const r = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  const w2 = r.dcos.find((w) => w.name === 'DCOS 2');
+  const gfp = w2.rows.find((row) => row.tech === 'GFP');
+  const grand = w2.rows.find((row) => row.tech === 'Grand Total');
+  assert.equal(gfp.installed, 1);                // r7 (10/28)
+  assert.ok(Math.abs(gfp.target - 988.8) < 1e-9); // 2472 * 0.4
+  assert.equal(grand.installed, 2);              // r6 (10/20) + r7 (10/28)
+  assert.ok(Math.abs(grand.target - 1336.8) < 1e-9);
+  // remaining = 31 - 28 = 3 days; grand variance = 1336.8 - 2
+  assert.ok(Math.abs(grand.reqDaily - (1336.8 - 2) / 3) < 1e-9);
+});
+
+test('MTD rows carry trend from the previous fed month (same filters), else null', () => {
+  const noPrev = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  assert.equal(noPrev.dcos.find((w) => w.name === 'MTD').rows.find((row) => row.tech === 'GFP').trend, null);
+
+  const r2 = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL, prev: { kpis: { gfpActual: 298, gahActual: 0 } } });
+  const mtd2 = r2.dcos.find((w) => w.name === 'MTD');
+  assert.equal(mtd2.rows.find((row) => row.tech === 'GFP').trend, 298);
+  assert.equal(mtd2.rows.find((row) => row.tech === 'GFP').trendAch, 298 / 2472);
+  assert.equal(mtd2.rows.find((row) => row.tech === 'GAH').trend, 0);
+});
+
+test('MTD exposes GFP/GAH average daily (installed ÷ days elapsed)', () => {
+  const r = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  const mtd = r.dcos.find((w) => w.name === 'MTD');
+  assert.ok(Math.abs(mtd.avgDaily.gfp - 2 / 28) < 1e-12);
+  assert.ok(Math.abs(mtd.avgDaily.gah - 1 / 28) < 1e-12);
+});
+
+test('BDE filter re-scopes records and targets', () => {
+  const r = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL }, { bde: 'KIRK' });
+  assert.equal(r.records.length, 1);             // only r3 (AGT-002)
+  assert.equal(r.kpis.actual, 1);
+  assert.equal(r.kpis.gahActual, 1);
+  assert.equal(r.kpis.gfpTarget, 1110);          // KIRK only
+  assert.equal(r.kpis.gahTarget, 425);
+  assert.equal(r.kpis.target, 1535);
+});
+
+test('TECH filter narrows target to that tech column', () => {
+  const r = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL }, { tech: 'GAH' });
+  assert.equal(r.kpis.actual, 1);
+  assert.equal(r.kpis.target, 870);              // blended w/o BDE filter but tech GAH
+});
+
+test('BBSP filter uses the BBSP target row', () => {
+  const r = computeDashboard(parseCsv(V_TEXT), {
+    ...BDE, ...POOL, bspbTargets: parseBspbTargets(parseCsv(BBSP_TARGETS_TEXT))
+  }, { bbsp: 'STORE A' });
+  assert.equal(r.records.length, 3);             // r1 + r2(ongoing) + r7 — same agent
+  assert.equal(r.kpis.actual, 2);
+  assert.equal(r.kpis.target, 235);
+  assert.equal(r.kpis.gfpTarget, 200);
+});
+
+test('search matches subscriber, territory, agent, and job order (case-insensitive)', () => {
+  const bySub = computeDashboard(parseCsv(V_TEXT), { ...POOL }, { search: 'reyes, ana' });
+  assert.equal(bySub.records.length, 3);         // r1, r2(Lim? no—'Reyes, Ana' agentname on r1,r2? r2 agent is AGT-001 too), r7
+  const byTerritory = computeDashboard(parseCsv(V_TEXT), { ...POOL }, { search: 'terr-2' });
+  assert.equal(byTerritory.records.length, 2);   // r3, r7
+  const byJob = computeDashboard(parseCsv(V_TEXT), { ...POOL }, { search: 'wq-9001' });
+  assert.equal(byJob.records.length, 1);
+  assert.equal(byJob.records[0].jobOrder, 'WQ-9001');
+});
+
+test('agent productivity aggregates completed rows per agent with BBSP + BDE', () => {
+  const r = computeDashboard(parseCsv(V_TEXT), { ...POOL });
+  const reyes = r.agentProductivity.find((a) => a.agentCode === 'AGT-001');
+  assert.equal(reyes.gfp, 2);
+  assert.equal(reyes.total, 2);
+  assert.equal(reyes.bbsp, 'STORE A');
+  assert.equal(reyes.bde, 'ROXANNE');
+  const cruz = r.agentProductivity.find((a) => a.agentCode === 'AGT-002');
+  assert.equal(cruz.gah, 1);
+  assert.equal(cruz.total, 1);
+  assert.equal(r.agentProductivity.length, 2);   // agents with zero completions omitted
+});
+
+test('by-area performance distributes the scoped target by completion share', () => {
+  const r = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  const t1 = r.areaPerformance.find((a) => a.area === 'T1');
+  const t2 = r.areaPerformance.find((a) => a.area === 'T2');
+  assert.equal(t1.actual, 2);                    // r1 + r6
+  assert.equal(t2.actual, 2);                    // r3 + r7
+  assert.equal(Math.abs(t1.target - 1671) <= 1, true);
+  assert.equal(Math.abs(t2.target - 1671) <= 1, true);
+});

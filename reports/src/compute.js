@@ -1,15 +1,20 @@
-// Pure dashboard data model for EBISU Sales Report — v2, target-driven.
-// Mirrors the CORRECT "Globe Broadband Performance Dashboard" Apps Script:
+// Pure dashboard data model for EBISU Sales Report — v3, target-driven,
+// mirroring the DEPLOYED Apps Script implementation (T6A-style layout):
 //   - VALIDATION rows (15 OUTPUT_HEADERS columns) are the records
 //   - classify: GFP* -> GFP, GLS*/7* -> GAH, else unclassified
 //   - ACTUAL = rows with STATUS (trimmed, uppercased) === 'COMPLETED'
 //   - NOT FOUND = RESULT === 'NOT FOUND' (completed-ness is independent of result)
-//   - monthly target = sum of per-BDE targets (TARGETS tab)
-//   - territory targets = monthly target distributed by completion share
-//   - daily performance = completions by day-of-month of LAST UPDATE
+//   - monthly target = sum of per-BDE targets (TARGETS tab), split per tech
+//   - DCOS windows: day 1–15 @ 60% / day 16–31 @ 40% / MTD @ 100%
+//   - Req Daily = variance ÷ remaining window days (0 once the window passed)
+//   - Trend (vol) = previous fed month's COMPLETED count for that tech;
+//     Trend Ach = trend ÷ this row's target (— when no previous month fed)
+//   - global filters (BDE / BBSP / TECH / search) re-slice records AND targets
 //   - per-record BBSP/BDE from the AGENT POOL tab (no separate BDE tab exists)
 // Deliberate deviations (documented in the plan): monthLabel/daysElapsed come
-// from the data (max LAST UPDATE), not the viewer's wall clock.
+// from the data (max LAST UPDATE), not the viewer's wall clock. Grand Total
+// rows count ALL completed work orders (incl. unclassified), so MTD reconciles
+// with the KPI cards.
 import Papa from 'papaparse';
 
 export function normalizeHeader(header) {
@@ -170,14 +175,69 @@ export function detectFeedType(headerRow) {
 const COMPLETED_STATUS = 'COMPLETED';
 const RESULT_NOT_FOUND = 'NOT FOUND';
 
+// Deployed-script windows: DCOS 1 = first half at 60%, DCOS 2 = rest at 40%.
+const DCOS_WINDOWS = [
+  { name: 'DCOS 1', startDay: 1, endDay: 15, share: 0.6 },
+  { name: 'DCOS 2', startDay: 16, endDay: 31, share: 0.4 }
+];
+const MTD_WINDOW = { name: 'MTD', startDay: 1, endDay: 31, share: 1 };
+
+/** 2005.2 -> "2,005.2"; 3342 -> "3,342" (insight strings). */
+function fmtNum(n) {
+  const rounded = Math.round(Number(n) * 10) / 10;
+  return Number.isInteger(rounded)
+    ? rounded.toLocaleString('en-US')
+    : rounded.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function matchFilters(rowBag, filters) {
+  if (filters.bde && rowBag.bde !== filters.bde) return false;
+  if (filters.bbsp && rowBag.bbsp !== filters.bbsp) return false;
+  if (filters.tech && rowBag.tech !== filters.tech) return false;
+  if (filters.search) {
+    const needle = String(filters.search).trim().toLowerCase();
+    const haystack = [
+      rowBag.jobOrder, rowBag.subscriber, rowBag.customerAddress, rowBag.territory,
+      rowBag.area, rowBag.facility, rowBag.bbsp, rowBag.bde,
+      rowBag.agentName, rowBag.agentCode, rowBag.channel
+    ].join(' | ').toLowerCase();
+    if (needle && !haystack.includes(needle)) return false;
+  }
+  return true;
+}
+
 /**
  * Build every figure the dashboard needs.
  * @param data String[][] — parsed VALIDATION CSV (header row + rows)
- * @param extras { bdeTargets, bspbTargets, agentPool } — optional parsed feeds
+ * @param extras { bdeTargets, bspbTargets, agentPool, prev } — optional parsed
+ *   feeds; prev = the previous month's computeDashboard result (same filters)
+ * @param filters { bde, bbsp, tech, search } — '' means All
  */
-export function computeDashboard(data, extras = {}) {
-  const withTargets = extras.bdeTargets || parseBdeTargets([]);
-  const target = withTargets.total;
+export function computeDashboard(data, extras = {}, filters = {}) {
+  const bdeTargets = extras.bdeTargets || parseBdeTargets([]);
+  const bbspTargets = extras.bspbTargets || {};
+  const pool = extras.agentPool || parseAgentPool([]);
+
+  // ---- scoped tech targets (filters re-slice the target universe) ----
+  let techTarget = { gfp: 0, gah: 0 };
+  if (filters.bbsp) {
+    const row = bbspTargets[filters.bbsp];
+    if (row) techTarget = { gfp: row.gfp, gah: row.gah };
+  } else if (filters.bde) {
+    const row = bdeTargets.byBde[filters.bde];
+    if (row) techTarget = { gfp: row.gfp, gah: row.gah };
+  } else {
+    for (const row of Object.values(bdeTargets.byBde)) {
+      techTarget.gfp += row.gfp;
+      techTarget.gah += row.gah;
+    }
+  }
+  const scopedTarget = (tech) => {
+    if (tech === 'GFP') return techTarget.gfp;
+    if (tech === 'GAH') return techTarget.gah;
+    return techTarget.gfp + techTarget.gah;
+  };
+  const target = scopedTarget(filters.tech || '');
 
   const monthLabelFor = (date) => date
     ? date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase()
@@ -187,14 +247,21 @@ export function computeDashboard(data, extras = {}) {
     monthLabel: '',
     dataAsOf: null,
     daysElapsed: 0,
-    kpis: { totalOrders: 0, actual: 0, target, achievement: 0, dailyAverage: 0, notFound: 0 },
+    kpis: {
+      totalOrders: 0, actual: 0, gfpActual: 0, gahActual: 0,
+      target, gfpTarget: techTarget.gfp, gahTarget: techTarget.gah,
+      achievement: 0, dailyAverage: 0, notFound: 0
+    },
     monthlyTarget: { total: target, actual: 0, remaining: Math.max(target, 0) },
-    bdeTargets: withTargets.byBde,
-    bbspTargets: extras.bspbTargets || {},
+    bdeTargets: bdeTargets.byBde,
+    bbspTargets,
     bdeActuals: {},
     bbspActuals: {},
     territoryPerformance: [],
+    areaPerformance: [],
     dailyPerformance: [],
+    agentProductivity: [],
+    dcos: [],
     records: []
   };
   if (!Array.isArray(data) || data.length < 2) return blankResult;
@@ -223,12 +290,12 @@ export function computeDashboard(data, extras = {}) {
     const value = index === -1 ? undefined : row[index];
     return String(value ?? '').trim();
   };
-  const pool = extras.agentPool || parseAgentPool([]);
 
   const records = [];
-  let actual = 0, notFound = 0;
+  let actual = 0, gfpActual = 0, gahActual = 0, notFound = 0;
   let dataAsOf = null;
-  const dayCount = {}, territoryActual = {}, bdeActuals = {}, bbspActuals = {};
+  const dayCount = {}, territoryActual = {}, areaActual = {}, bdeActuals = {}, bbspActuals = {};
+  const agentBags = {};
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
@@ -238,15 +305,14 @@ export function computeDashboard(data, extras = {}) {
     const status = str(row, STATUS);
     const result = str(row, RESULT).toUpperCase();
     const isCompleted = status.toUpperCase() === COMPLETED_STATUS;
-    if (result === RESULT_NOT_FOUND) notFound++;
+    const tech = classifyWorkOrder(jobOrder);
 
     const agentCode = str(row, AGENT_CODE);
     const agentName = str(row, AGENT_NAME);
     const poolEntry = pool.byAgent[agentCode] || (agentName ? pool.byAgent[agentName.toUpperCase()] : undefined);
-
-    records.push({
+    const record = {
       jobOrder,
-      tech: classifyWorkOrder(jobOrder),
+      tech,
       result,
       subscriber: str(row, SUBSCRIBER),
       customerAddress: str(row, ADDRESS),
@@ -263,37 +329,125 @@ export function computeDashboard(data, extras = {}) {
       channel: str(row, CHANNEL),
       bbsp: poolEntry ? poolEntry.bbsp : '',
       bde: poolEntry ? poolEntry.bde : ''
-    });
+    };
 
-    const lastUpdate = parseSheetDate(LAST_UPDATE === -1 ? '' : row[LAST_UPDATE]);
+    if (!matchFilters(record, filters)) continue;
+    records.push(record);
+    if (result === RESULT_NOT_FOUND) notFound++;
+
+    const lastUpdate = parseSheetDate(record.lastUpdate);
     if (lastUpdate && (!dataAsOf || lastUpdate > dataAsOf)) dataAsOf = lastUpdate;
 
     if (isCompleted) {
       actual++;
-      const territory = str(row, TERRITORY) || 'BLANK';
+      if (tech === 'GFP') gfpActual++;
+      if (tech === 'GAH') gahActual++;
+
+      const territory = record.territory || 'BLANK';
       territoryActual[territory] = (territoryActual[territory] || 0) + 1;
+      const area = record.area || 'BLANK';
+      areaActual[area] = (areaActual[area] || 0) + 1;
+
       if (lastUpdate) {
         const day = lastUpdate.getDate();
         dayCount[day] = (dayCount[day] || 0) + 1;
       }
+
       if (poolEntry) {
-        const keyCode = agentCode || agentName.toUpperCase();
-        const matched = pool.byAgent[keyCode] || (agentName ? pool.byAgent[agentName.toUpperCase()] : undefined);
-        if (matched) {
-          if (matched.bde) bdeActuals[matched.bde] = (bdeActuals[matched.bde] || 0) + 1;
-          if (matched.bbsp) bbspActuals[matched.bbsp] = (bbspActuals[matched.bbsp] || 0) + 1;
+        if (record.bde) bdeActuals[record.bde] = (bdeActuals[record.bde] || 0) + 1;
+        if (record.bbsp) bbspActuals[record.bbsp] = (bbspActuals[record.bbsp] || 0) + 1;
+        const key = agentCode || agentName.toUpperCase();
+        if (!agentBags[key]) {
+          agentBags[key] = {
+            agentCode,
+            agentName: record.agentName,
+            bbsp: record.bbsp,
+            bde: record.bde,
+            gfp: 0, gah: 0, total: 0
+          };
         }
+        agentBags[key].gfp += tech === 'GFP' ? 1 : 0;
+        agentBags[key].gah += tech === 'GAH' ? 1 : 0;
+        agentBags[key].total += 1;
       }
     }
   }
 
   const daysElapsed = dataAsOf ? dataAsOf.getDate() : 0;
-  const territoryPerformance = Object.keys(territoryActual)
-    .map((t) => ({
-      territory: t,
-      actual: territoryActual[t],
-      target: target > 0 ? Math.round(target * (territoryActual[t] / Math.max(actual, 1))) : 0
-    }))
+
+  // ---- DCOS / MTD windows ----
+  const prevKpis = extras.prev && extras.prev.kpis ? extras.prev.kpis : null;
+  const prevTotals = prevKpis
+    ? { GFP: prevKpis.gfpActual || 0, GAH: prevKpis.gahActual || 0, 'Grand Total': (prevKpis.gfpActual || 0) + (prevKpis.gahActual || 0) }
+    : null;
+
+  const completedInWindow = (w) => {
+    const counts = { GFP: 0, GAH: 0, 'Grand Total': 0 };
+    for (const record of records) {
+      if (record.status.toUpperCase() !== COMPLETED_STATUS) continue;
+      const date = parseSheetDate(record.lastUpdate);
+      if (!date) continue;
+      const day = date.getDate();
+      if (day < w.startDay || day > w.endDay) continue;
+      counts[record.tech] = (counts[record.tech] || 0) + 1;
+      counts['Grand Total'] += 1;
+    }
+    return counts;
+  };
+
+  const buildWindow = (w) => {
+    const installedByTech = completedInWindow(w);
+    const remaining = Math.max(0, w.endDay - daysElapsed);
+    const rows = ['GFP', 'GAH', 'Grand Total'].map((tech) => {
+      const installed = installedByTech[tech] || 0;
+      const rowTarget = scopedTarget(tech === 'Grand Total' ? '' : tech) * w.share;
+      const variance = rowTarget - installed;
+      const trend = prevTotals ? prevTotals[tech] : null;
+      const trendAch = trend === null ? null : (rowTarget > 0 ? trend / rowTarget : 0);
+      return {
+        tech,
+        installed,
+        target: rowTarget,
+        achPct: rowTarget > 0 ? installed / rowTarget : 0,
+        variance,
+        trend,
+        trendAch,
+        reqDaily: remaining > 0 ? variance / remaining : 0
+      };
+    });
+    const grand = rows[2];
+    const insights = [
+      grand.trendAch === null
+        ? 'No previous month fed — trend unavailable'
+        : `${Math.round(grand.trendAch * 100)}% trend vs. ${w.name === 'MTD' ? 'month' : w.name} target of ${fmtNum(grand.target)}`,
+      `${fmtNum(grand.variance)} variance to hit ${w.name === 'MTD' ? 'month' : w.name} target`,
+      `${remaining} remaining day(s) for ${w.name === 'MTD' ? 'the month' : w.name}`
+    ];
+    return { name: w.name, startDay: w.startDay, endDay: w.endDay, share: w.share, rows, insights };
+  };
+
+  const dcos = [...DCOS_WINDOWS.map(buildWindow), buildWindow(MTD_WINDOW)];
+  const mtd = dcos[2];
+  mtd.avgDaily = {
+    gfp: daysElapsed > 0 ? (installedSafe(mtd, 'GFP')) / daysElapsed : 0,
+    gah: daysElapsed > 0 ? (installedSafe(mtd, 'GAH')) / daysElapsed : 0
+  };
+
+  function installedSafe(window, tech) {
+    const row = window.rows.find((r) => r.tech === tech);
+    return row ? row.installed : 0;
+  }
+
+  // ---- share-distributed targets ----
+  const shareTargets = (counts, labelKey) => Object.keys(counts).map((key) => ({
+    [labelKey]: key,
+    actual: counts[key],
+    target: target > 0 ? Math.round(target * (counts[key] / Math.max(actual, 1))) : 0
+  }));
+
+  const territoryPerformance = shareTargets(territoryActual, 'territory')
+    .sort((a, b) => b.actual - a.actual);
+  const areaPerformance = shareTargets(areaActual, 'area')
     .sort((a, b) => b.actual - a.actual);
 
   const dailyPerformance = [];
@@ -301,25 +455,37 @@ export function computeDashboard(data, extras = {}) {
     if (dayCount[day]) dailyPerformance.push({ day: String(day), actual: dayCount[day] });
   }
 
+  const agentProductivity = Object.values(agentBags)
+    .sort((a, b) => b.total - a.total || a.agentName.localeCompare(b.agentName));
+
+  const kpis = {
+    totalOrders: records.length,
+    actual,
+    gfpActual,
+    gahActual,
+    target,
+    gfpTarget: techTarget.gfp,
+    gahTarget: techTarget.gah,
+    achievement: target > 0 ? actual / target : 0,
+    dailyAverage: daysElapsed > 0 ? actual / daysElapsed : 0,
+    notFound
+  };
+
   return {
     monthLabel: monthLabelFor(dataAsOf),
     dataAsOf,
     daysElapsed,
-    kpis: {
-      totalOrders: records.length,
-      actual,
-      target,
-      achievement: target > 0 ? actual / target : 0,
-      dailyAverage: daysElapsed > 0 ? actual / daysElapsed : 0,
-      notFound
-    },
+    kpis,
     monthlyTarget: { total: target, actual, remaining: Math.max(target - actual, 0) },
-    bdeTargets: withTargets.byBde,
-    bbspTargets: extras.bspbTargets || {},
+    bdeTargets: bdeTargets.byBde,
+    bbspTargets,
     bdeActuals,
     bbspActuals,
     territoryPerformance,
+    areaPerformance,
     dailyPerformance,
+    agentProductivity,
+    dcos,
     records
   };
 }
