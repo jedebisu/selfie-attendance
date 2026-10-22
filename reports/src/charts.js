@@ -6,18 +6,21 @@ import {
   Chart,
   DoughnutController,
   BarController,
+  LineController,
   CategoryScale,
   LinearScale,
   Legend,
   Tooltip,
   ArcElement,
-  BarElement
+  BarElement,
+  LineElement,
+  PointElement
 } from 'chart.js';
 
 Chart.register(
-  DoughnutController, BarController,
+  DoughnutController, BarController, LineController,
   CategoryScale, LinearScale,
-  Legend, Tooltip, ArcElement, BarElement
+  Legend, Tooltip, ArcElement, BarElement, LineElement, PointElement
 );
 
 const C = {
@@ -182,6 +185,110 @@ function territoryBars(slot, rows, labelKey = 'territory') {
   }));
 }
 
+// ---- pace: cumulative completions vs linear pro-rata target (dashed) ----
+function paceLine(slot, pace) {
+  if (!pace || !pace.days.length) return emptyChart(slot, 'Feed a VALIDATION export to see the pace.');
+  liveCharts.push(new Chart(makeCanvas(slot, 'Line chart: cumulative completed work orders against the linear month target pace'), {
+    type: 'line',
+    data: {
+      labels: pace.days,
+      datasets: [
+        {
+          label: 'Actual (cumulative)',
+          data: pace.actual,
+          borderColor: C.gold,
+          backgroundColor: C.gold,
+          fill: false,
+          tension: 0.25,
+          pointRadius: 0,
+          borderWidth: 2
+        },
+        {
+          label: 'Target pace',
+          data: pace.targetPace,
+          borderColor: C.muted,
+          backgroundColor: C.muted,
+          borderDash: [6, 4],
+          fill: false,
+          tension: 0,
+          pointRadius: 0,
+          borderWidth: 2
+        }
+      ]
+    },
+    options: baseOptions({
+      scales: {
+        y: { beginAtZero: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: C.muted, maxTicksLimit: 31, font: { size: 10 } } }
+      },
+      plugins: { legend: { position: 'bottom', labels: { color: C.text, font: { size: 12 } } } }
+    })
+  }));
+}
+
+// ---- week-on-week: this month vs the previous fed month, per W1..W4 ----
+function weeklyBars(slot, currentWeekly, previousWeekly) {
+  if (!currentWeekly || !currentWeekly.length) {
+    return emptyChart(slot, 'Feed a VALIDATION export to see the weekly rhythm.');
+  }
+  const labels = currentWeekly.map((w) => w.week);
+  const datasets = [
+    {
+      label: 'This month',
+      data: currentWeekly.map((w) => w.actual),
+      backgroundColor: C.gold,
+      borderRadius: 3
+    }
+  ];
+  if (previousWeekly && previousWeekly.length) {
+    datasets.push({
+      label: 'Previous month',
+      data: labels.map((week) => previousWeekly.find((w) => w.week === week)?.actual || 0),
+      backgroundColor: C.gah,
+      borderRadius: 3
+    });
+  }
+  liveCharts.push(new Chart(makeCanvas(slot, 'Bar chart of completed work orders per week, this month and the previous fed month'), {
+    type: 'bar',
+    data: { labels, datasets },
+    options: baseOptions({
+      scales: {
+        y: { beginAtZero: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: C.text } }
+      },
+      plugins: { legend: { position: 'bottom', labels: { color: C.text, font: { size: 12 } } } }
+    })
+  }));
+}
+
+// ---- agent comparison: horizontal bars, longest (top agent) on top ----
+function agentBars(slot, rows) {
+  if (!rows.length) return emptyChart(slot, 'No completed work orders in this view yet.');
+  const compose = (a) => (a.agentName || a.agentCode || '—') + (a.agentCode ? ` (${a.agentCode})` : '');
+  // rows arrive sorted most->least; reverse so the top agent renders on top
+  const ordered = [...rows].reverse();
+  liveCharts.push(new Chart(makeCanvas(slot, 'Horizontal bar chart comparing completed work orders per agent'), {
+    type: 'bar',
+    data: {
+      labels: ordered.map(compose),
+      datasets: [{
+        label: 'Completed',
+        data: ordered.map((a) => a.total),
+        backgroundColor: C.purple,
+        borderRadius: 3
+      }]
+    },
+    options: baseOptions({
+      indexAxis: 'y',
+      scales: {
+        y: { grid: { display: false }, ticks: { color: C.text, font: { size: 10 } } },
+        x: { beginAtZero: true, grid: { color: C.border }, ticks: { color: C.muted, precision: 0 } }
+      },
+      plugins: { legend: { display: false } }
+    })
+  }));
+}
+
 // ---- month vs month: side-by-side daily completions ----
 function vsDailyBars(slot, currentDaily, previousDaily) {
   const dayMap = (entries) => {
@@ -233,6 +340,9 @@ export function mountCharts(root, bundle) {
     if (kind === 'daily') dailyBars(slot, current.dailyPerformance);
     if (kind === 'territory') territoryBars(slot, current.territoryPerformance);
     if (kind === 'area') territoryBars(slot, current.areaPerformance, 'area');
+    if (kind === 'pace') paceLine(slot, current.pace);
+    if (kind === 'weekly') weeklyBars(slot, current.weekly, previous?.weekly);
+    if (kind === 'agents') agentBars(slot, current.agentProductivity);
     if (kind === 'vs-daily') {
       if (previous && previous.dailyPerformance.length) {
         vsDailyBars(slot, current.dailyPerformance, previous.dailyPerformance);
