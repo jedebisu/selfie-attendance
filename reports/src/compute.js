@@ -17,6 +17,21 @@
 // with the KPI cards.
 import Papa from 'papaparse';
 
+// Week-on-week buckets (user-approved definition): W1 = days 1-7,
+// W2 = 8-14, W3 = 15-21, W4 = 22 through the real month end.
+export const WEEK_DEFS = [
+  { week: 'W1', start: 1, end: 7 },
+  { week: 'W2', start: 8, end: 14 },
+  { week: 'W3', start: 15, end: 21 },
+  { week: 'W4', start: 22, end: 31 }
+];
+
+// Relative change as a fraction of the base; null when there is no usable
+// base (missing or zero) so the render layer shows "—" instead of Infinity.
+export function pctChange(current, previous) {
+  return previous > 0 ? (current - previous) / previous : null;
+}
+
 export function normalizeHeader(header) {
   return String(header || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
 }
@@ -262,6 +277,8 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     dailyPerformance: [],
     agentProductivity: [],
     dcos: [],
+    pace: { days: [], actual: [], targetPace: [] },
+    weekly: [],
     records: []
   };
   if (!Array.isArray(data) || data.length < 2) return blankResult;
@@ -472,6 +489,26 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     if (dayCount[day]) dailyPerformance.push({ day: String(day), actual: dayCount[day] });
   }
 
+  // ---- pace: cumulative completions vs a linear pro-rata target line ----
+  const daysInMonth = dataAsOf
+    ? new Date(dataAsOf.getFullYear(), dataAsOf.getMonth() + 1, 0).getDate()
+    : 31;
+  const paceDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  let run = 0;
+  const pace = {
+    days: paceDays,
+    actual: paceDays.map((d) => (run += dayCount[d] || 0)),
+    targetPace: paceDays.map((d) => (target * d) / daysInMonth)
+  };
+
+  // ---- weekly: completed counts per W1..W4 bucket, W4 ends at month end ----
+  const weekly = WEEK_DEFS.map((def) => {
+    const end = Math.min(def.end, daysInMonth);
+    let sum = 0;
+    for (let d = def.start; d <= end; d++) sum += dayCount[d] || 0;
+    return { week: def.week, start: def.start, end, actual: sum };
+  });
+
   const agentProductivity = Object.values(agentBags)
     .sort((a, b) => b.total - a.total || a.agentName.localeCompare(b.agentName));
 
@@ -503,6 +540,8 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     dailyPerformance,
     agentProductivity,
     dcos,
+    pace,
+    weekly,
     records
   };
 }

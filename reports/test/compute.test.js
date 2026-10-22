@@ -20,7 +20,8 @@ import {
   computeDashboard,
   parseBdeTargets,
   parseBspbTargets,
-  parseAgentPool
+  parseAgentPool,
+  pctChange
 } from '../src/compute.js';
 
 // ---------------- shared fixtures ----------------
@@ -358,4 +359,48 @@ test('by-area performance distributes the scoped target by completion share', ()
   assert.equal(t2.actual, 2);                    // r3 + r7
   assert.equal(Math.abs(t1.target - 1671) <= 1, true);
   assert.equal(Math.abs(t2.target - 1671) <= 1, true);
+});
+
+test('pace series is cumulative actual with linear pro-rata target to month end', () => {
+  const res = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  const monthDays = new Date(res.dataAsOf.getFullYear(), res.dataAsOf.getMonth() + 1, 0).getDate();
+  assert.equal(res.pace.days.length, monthDays);          // Oct 2026 -> 31 entries
+  assert.deepEqual(res.pace.days, Array.from({ length: monthDays }, (_, i) => i + 1));
+  assert.equal(res.pace.actual.at(-1), res.kpis.actual);  // ends at ACTUAL (4)
+  // END-OF-DAY convention: dashed line = target x day / daysInMonth (day 1 = 1/31)
+  assert.ok(Math.abs(res.pace.targetPace[0] - res.kpis.target / monthDays) < 1e-9);
+  assert.ok(Math.abs(res.pace.targetPace.at(-1) - res.kpis.target) < 1e-9);
+  // day 5 = r1 -> actual 1; before day 5 actual stays 0
+  assert.equal(res.pace.actual[4], 1);
+  assert.equal(res.pace.actual[3], 0);
+});
+
+test('weekly buckets W1..W4 with real month-end, sums reconcile, day 8 -> W2', () => {
+  const res = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  const weeks = res.weekly;
+  assert.deepEqual(weeks.map((w) => w.week), ['W1', 'W2', 'W3', 'W4']);
+  assert.equal(weeks[0].start, 1);
+  const monthDays = new Date(res.dataAsOf.getFullYear(), res.dataAsOf.getMonth() + 1, 0).getDate();
+  assert.equal(weeks[3].end, monthDays);
+  assert.equal(weeks[3].start, 22);
+  assert.equal(weeks.reduce((sum, w) => sum + w.actual, 0), res.kpis.actual);
+  // fixture completions (blank-JOB-ORDER rows dropped, per the v1 pins):
+  // day 5 -> W1, day 10 -> W2, day 20 -> W3, day 28 -> W4
+  assert.equal(weeks[0].actual, 1);
+  assert.equal(weeks[1].actual, 1);   // day 8..14: only day 10 (r3)
+  assert.equal(weeks[2].actual, 1);
+  assert.equal(weeks[3].actual, 1);
+});
+
+test('blank result carries empty pace + weekly without crashing', () => {
+  const res = computeDashboard([]);
+  assert.deepEqual(res.pace, { days: [], actual: [], targetPace: [] });
+  assert.deepEqual(res.weekly, []);
+});
+
+test('pctChange: null on zero base, fraction otherwise', () => {
+  assert.equal(pctChange(10, 0), null);
+  assert.equal(pctChange(0, 10), -1);
+  assert.ok(Math.abs(pctChange(15, 10) - 0.5) < 1e-9);
+  assert.ok(Math.abs(pctChange(10, 15) - (-1 / 3)) < 1e-9);
 });
