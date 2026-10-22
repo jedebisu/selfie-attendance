@@ -21,6 +21,7 @@ import {
   parseBdeTargets,
   parseBspbTargets,
   parseAgentPool,
+  calendarWeeks,
   pctChange
 } from '../src/compute.js';
 
@@ -375,30 +376,68 @@ test('pace series is cumulative actual with linear pro-rata target to month end'
   assert.equal(res.pace.actual[3], 0);
 });
 
-test('weekly buckets W1..W4 with real month-end, sums reconcile, day 8 -> W2', () => {
-  const res = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
-  const weeks = res.weekly;
-  assert.deepEqual(weeks.map((w) => w.week), ['W1', 'W2', 'W3', 'W4']);
-  assert.equal(weeks[0].start, 1);
-  const monthDays = new Date(res.dataAsOf.getFullYear(), res.dataAsOf.getMonth() + 1, 0).getDate();
-  assert.equal(weeks[3].end, monthDays);
-  assert.equal(weeks[3].start, 22);
-  assert.equal(weeks.reduce((sum, w) => sum + w.actual, 0), res.kpis.actual);
-  // fixture completions (blank-JOB-ORDER rows dropped, per the v1 pins):
-  // day 5 -> W1, day 10 -> W2, day 20 -> W3, day 28 -> W4
-  assert.equal(weeks[0].actual, 1);
-  assert.equal(weeks[1].actual, 1);   // day 8..14: only day 10 (r3)
-  assert.equal(weeks[2].actual, 1);
-  assert.equal(weeks[3].actual, 1);
+// ---- deployed-style weekly blocks (calendar Mon-Sun weeks) ----
+// Fixture: Oct 2026, 31 days, Oct 1 = Thursday -> offset 3.
+// Mon-weeks: WK1 1-4, WK2 5-11, WK3 12-18, WK4 19-25, WK5 26-31.
+// apps-gen weekly: WK1 2 (GFP r1, GAH r2), WK2 1 (GAH r3), WK3 1 (r6 unclass),
+//   WK4 1 (r7 GFP, gen 10/25 = day 25), WK5 0 -> monthly total 5 (r4 NOT FOUND
+//   has no gen date; the blank-JOB-ORDER orphan is dropped per the v1 pins).
+// installed weekly: WK1 0, WK2 2 (GFP r1 + GAH r3), WK3 0, WK4 1 (r6),
+//   WK5 1 (r7 GFP) -> sums to kpis.actual = 4.
+test('calendarWeeks: Mon-Sun weeks with partial first/last, clamped to month end', () => {
+  // Oct 2026: Thursday start -> WK1 = days 1-4 (4 days), 5 weeks
+  const oct = calendarWeeks(new Date(2026, 9, 1));
+  assert.deepEqual(oct[0], { week: 'WK1', start: 1, end: 4, days: 4 });
+  assert.equal(oct[1].start, 5);
+  assert.equal(oct[1].end, 11);
+  assert.equal(oct.length, 5);
+  assert.equal(oct[4].end, 31);
+  assert.equal(oct[4].days, 6);
+  // Feb 2027: starts Monday, 28 days -> exactly 4 clean weeks of 7
+  const feb = calendarWeeks(new Date(2027, 1, 1));
+  assert.equal(feb.length, 4);
+  assert.ok(feb.every((w) => w.days === 7));
+  assert.equal(feb[3].end, 28);
 });
 
-test('blank result carries empty pace + weekly without crashing', () => {
+test('weeklyBlocks: apps-gen tallies by DATE APPS GEN, installed by LAST UPDATE', () => {
+  const res = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  assert.equal(res.monthDays, 31);
+  const ag = res.weeklyBlocks.appsGen;
+  assert.deepEqual(ag.map((w) => w.total), [2, 1, 1, 1, 0]);
+  assert.deepEqual(ag.map((w) => w.gfp), [1, 0, 0, 1, 0]);
+  assert.deepEqual(ag.map((w) => w.gah), [1, 1, 0, 0, 0]);
+  const inst = res.weeklyBlocks.installed;
+  assert.deepEqual(inst.map((w) => w.total), [0, 2, 0, 1, 1]);
+  assert.deepEqual(inst.map((w) => w.gfp), [0, 1, 0, 0, 1]);
+  assert.deepEqual(inst.map((w) => w.gah), [0, 1, 0, 0, 0]);
+  // reconciliation
+  assert.equal(res.appsGenMonthly.total, ag.reduce((s, w) => s + w.total, 0));
+  assert.equal(inst.reduce((s, w) => s + w.total, 0), res.kpis.actual);
+  assert.deepEqual(res.appsGenMonthly, { total: 5, gfp: 2, gah: 2 });
+  // weeks shapes appsGen/installed cells 1:1
+  assert.equal(res.weeklyBlocks.weeks.length, ag.length);
+  assert.equal(res.weeklyBlocks.weeks[0].days, 4);
+});
+
+test('apps-gen excludes rows without a DATE APPS GEN in the data month', () => {
+  const res = computeDashboard(parseCsv(V_TEXT), { ...BDE, ...POOL });
+  // r4 (NOT FOUND, blank gen date) is in totalOrders but not in weekly sums
+  assert.ok(res.kpis.totalOrders > res.appsGenMonthly.total);
+});
+
+test('blank result carries empty pace + weekly blocks without crashing', () => {
   const res = computeDashboard([]);
   assert.deepEqual(res.pace, { days: [], actual: [], targetPace: [] });
-  assert.deepEqual(res.weekly, []);
+  assert.deepEqual(res.weeklyBlocks, { weeks: [], appsGen: [], installed: [] });
+  assert.equal(res.monthDays, 0);
+  assert.deepEqual(res.appsGenMonthly, { total: 0, gfp: 0, gah: 0 });
 });
 
-test('pctChange: null on zero base, fraction otherwise', () => {
+test('pctChange covers the vs-last-week math too: null on zero base, fraction otherwise', () => {
+  // 22.7 avg daily vs LM 17.27 avg daily = +31.4% (sane WK1 comparison)
+  assert.ok(Math.abs(pctChange(22.7, 17.27) - 0.3137) < 0.001);
+  assert.ok(Math.abs(pctChange(16.6, 22.7) - (-0.2687)) < 0.001);
   assert.equal(pctChange(10, 0), null);
   assert.equal(pctChange(0, 10), -1);
   assert.ok(Math.abs(pctChange(15, 10) - 0.5) < 1e-9);

@@ -17,17 +17,30 @@
 // with the KPI cards.
 import Papa from 'papaparse';
 
-// Week-on-week buckets (user-approved definition): W1 = days 1-7,
-// W2 = 8-14, W3 = 15-21, W4 = 22 through the real month end.
-export const WEEK_DEFS = [
-  { week: 'W1', start: 1, end: 7 },
-  { week: 'W2', start: 8, end: 14 },
-  { week: 'W3', start: 15, end: 21 },
-  { week: 'W4', start: 22, end: 31 }
-];
+// Monday-Sunday calendar weeks across one month, partial first/last weeks
+// clamped to the real month end. A 30-day month starting Tuesday yields
+// day counts 6,7,7,7,3 (the deployed sheet's Days row).
+export function calendarWeeks(date) {
+  if (!date) return [];
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const offset = (new Date(year, month, 1).getDay() + 6) % 7; // Monday = 0
+  const count = Math.ceil((offset + daysInMonth) / 7);
+  const weeks = [];
+  for (let n = 0; n < count; n++) {
+    const anchoredStart = n * 7 - offset + 1;
+    const start = Math.max(1, anchoredStart);
+    const end = Math.min(anchoredStart + 6, daysInMonth);
+    weeks.push({ week: `WK${n + 1}`, start, end, days: end - start + 1 });
+  }
+  return weeks;
+}
 
 // Relative change as a fraction of the base; null when there is no usable
 // base (missing or zero) so the render layer shows "—" instead of Infinity.
+// Single helper covers both the weekly "vs Last Week" chips (average daily
+// vs previous week / LM rate) and any other relative change in the app.
 export function pctChange(current, previous) {
   return previous > 0 ? (current - previous) / previous : null;
 }
@@ -278,7 +291,9 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     agentProductivity: [],
     dcos: [],
     pace: { days: [], actual: [], targetPace: [] },
-    weekly: [],
+    monthDays: 0,
+    weeklyBlocks: { weeks: [], appsGen: [], installed: [] },
+    appsGenMonthly: { total: 0, gfp: 0, gah: 0 },
     records: []
   };
   if (!Array.isArray(data) || data.length < 2) return blankResult;
@@ -312,6 +327,10 @@ export function computeDashboard(data, extras = {}, filters = {}) {
   let actual = 0, gfpActual = 0, gahActual = 0, notFound = 0;
   let dataAsOf = null;
   const dayCount = {}, territoryActual = {}, areaActual = {}, bdeActuals = {}, bbspActuals = {};
+  // per-day tallies driving the deployed-style weekly blocks:
+  //   appsGen* = ALL committed rows by DATE APPS GEN (TOTAL/GFP/GAH)
+  //   gfpDays/gahDays = completed rows by LAST UPDATE, per technology
+  const appsGenDays = {}, appsGenGfp = {}, appsGenGah = {}, gfpDays = {}, gahDays = {};
   const agentBags = {};
 
   for (let i = 1; i < data.length; i++) {
@@ -355,6 +374,14 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     const lastUpdate = parseSheetDate(record.lastUpdate);
     if (lastUpdate && (!dataAsOf || lastUpdate > dataAsOf)) dataAsOf = lastUpdate;
 
+    const genDate = parseSheetDate(record.dateAppsGen);
+    if (genDate) {
+      const gday = genDate.getDate();
+      appsGenDays[gday] = (appsGenDays[gday] || 0) + 1;
+      if (tech === 'GFP') appsGenGfp[gday] = (appsGenGfp[gday] || 0) + 1;
+      if (tech === 'GAH') appsGenGah[gday] = (appsGenGah[gday] || 0) + 1;
+    }
+
     if (isCompleted) {
       actual++;
       if (tech === 'GFP') gfpActual++;
@@ -368,6 +395,8 @@ export function computeDashboard(data, extras = {}, filters = {}) {
       if (lastUpdate) {
         const day = lastUpdate.getDate();
         dayCount[day] = (dayCount[day] || 0) + 1;
+        if (tech === 'GFP') gfpDays[day] = (gfpDays[day] || 0) + 1;
+        if (tech === 'GAH') gahDays[day] = (gahDays[day] || 0) + 1;
       }
 
       // Every completing agent appears in productivity, even when the pool
@@ -501,13 +530,26 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     targetPace: paceDays.map((d) => (target * d) / daysInMonth)
   };
 
-  // ---- weekly: completed counts per W1..W4 bucket, W4 ends at month end ----
-  const weekly = WEEK_DEFS.map((def) => {
-    const end = Math.min(def.end, daysInMonth);
-    let sum = 0;
-    for (let d = def.start; d <= end; d++) sum += dayCount[d] || 0;
-    return { week: def.week, start: def.start, end, actual: sum };
+  // ---- weekly: deployed-style calendar-week blocks -----------------------
+  // appsGen = ALL rows by DATE APPS GEN; installed = completed by LAST
+  // UPDATE; rows TOTAL/GFP/GAH per week, reconciling to the month totals.
+  const weeks = calendarWeeks(dataAsOf);
+  const tallyWeeks = (weeks, totals, gfpMap, gahMap) => weeks.map((def) => {
+    let total = 0, gfp = 0, gah = 0;
+    for (let d = def.start; d <= def.end; d++) {
+      total += totals[d] || 0;
+      gfp += gfpMap[d] || 0;
+      gah += gahMap[d] || 0;
+    }
+    return { week: def.week, total, gfp, gah };
   });
+  const sumDays = (map) => Object.values(map).reduce((s, n) => s + n, 0);
+  const appsGenMonthly = { total: sumDays(appsGenDays), gfp: sumDays(appsGenGfp), gah: sumDays(appsGenGah) };
+  const weeklyBlocks = {
+    weeks,
+    appsGen: tallyWeeks(weeks, appsGenDays, appsGenGfp, appsGenGah),
+    installed: tallyWeeks(weeks, dayCount, gfpDays, gahDays)
+  };
 
   const agentProductivity = Object.values(agentBags)
     .sort((a, b) => b.total - a.total || a.agentName.localeCompare(b.agentName));
@@ -541,7 +583,9 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     agentProductivity,
     dcos,
     pace,
-    weekly,
+    monthDays: dataAsOf ? daysInMonth : 0,
+    weeklyBlocks,
+    appsGenMonthly,
     records
   };
 }
