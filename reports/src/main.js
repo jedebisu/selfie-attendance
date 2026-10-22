@@ -1,37 +1,115 @@
 import './styles.css';
-import { parseCsv, computeDashboard } from './compute.js';
+import {
+  parseCsv,
+  parseBdeTargets,
+  parseBspbTargets,
+  parseAgentPool,
+  computeDashboard,
+  detectFeedType
+} from './compute.js';
 import { renderDashboard } from './render.js';
 
 const app = document.getElementById('app');
-const DEFAULT_CSV_URL = 'data/validation.csv';
+const FEEDS = [
+  { url: 'data/validation.csv', type: 'validation', required: true },
+  { url: 'data/bde-targets.csv', type: 'bdeTargets', required: false },
+  { url: 'data/bbsp-targets.csv', type: 'bspbTargets', required: false },
+  { url: 'data/agent-pool.csv', type: 'agentPool', required: false }
+];
 
-// Renders one fully-fed dashboard pass: parse -> compute -> paint.
-export async function renderFromCsv(text, fileName) {
-  try {
-    const result = computeDashboard(parseCsv(text));
-    app.innerHTML = '';
-
-    const banner = document.createElement('div');
-    banner.className = 'feed-banner';
-    banner.textContent = `Fed by ${fileName}`;
-    app.appendChild(banner);
-
-    renderDashboard(app, result, { fileName });
-  } catch (error) {
-    console.error(`Could not build the report from ${fileName}:`, error);
-    showEmptyState(
-      'Could not read that file',
-      `"${fileName}" is not a VALIDATION sheet export. Export it again with File ▸ Download ▸ Comma-separated values and confirm the columns start with JOB ORDER, RESULT, SUBSCRIBER...`
-    );
-  }
-}
+// State: VALIDATION months are keyed by their own data month so the
+// "vs LAST MONTH" view can compare the newest fed month against the
+// previous one. Target/pool feeds are single-slot overlays.
+const state = {
+  validations: new Map(), // monthLabel -> { rows, fileName }
+  bdeTargets: null,
+  bspbTargets: null,
+  agentPool: null
+};
 
 function showEmptyState(message, hint) {
   app.innerHTML = '';
   const empty = document.createElement('div');
   empty.className = 'empty-state';
-  empty.innerHTML = `<div class="empty-title">${message}</div><div class="empty-hint">${hint}</div>`;
+  empty.textContent = '';
+  const title = document.createElement('div');
+  title.className = 'empty-title';
+  title.textContent = message;
+  const hintEl = document.createElement('div');
+  hintEl.className = 'empty-hint';
+  hintEl.textContent = hint;
+  empty.appendChild(title);
+  empty.appendChild(hintEl);
   app.appendChild(empty);
+}
+
+function monthLabelOf(rows) {
+  return computeDashboard(rows).monthLabel;
+}
+
+function applyFeed(type, rows, fileName) {
+  if (type === 'validation') {
+    const month = monthLabelOf(rows);
+    if (!month) throw new Error('no dates in this VALIDATION export');
+    state.validations.set(month, { rows, fileName });
+    return `VALIDATION for ${month}`;
+  }
+  if (type === 'bdeTargets') { state.bdeTargets = parseBdeTargets(rows); return 'TARGETS'; }
+  if (type === 'bspbTargets') { state.bspbTargets = parseBspbTargets(rows); return 'BBSP TARGETS'; }
+  if (type === 'agentPool') { state.agentPool = parseAgentPool(rows); return 'AGENT POOL'; }
+  return null;
+}
+
+/** Sort VALIDATION months newest-first by their data date (not string compare). */
+function sortedMonths() {
+  const labeled = [];
+  for (const [label, feed] of state.validations) {
+    const asOf = computeDashboard(feed.rows).dataAsOf;
+    labeled.push({ label, asOf, feed });
+  }
+  labeled.sort((a, b) => (b.asOf?.getTime() || 0) - (a.asOf?.getTime() || 0));
+  return labeled;
+}
+
+function rebuild(sourceNotes) {
+  const months = sortedMonths();
+  if (months.length === 0) {
+    showEmptyState(
+      'No VALIDATION data yet',
+      'Feed the site by dragging a VALIDATION sheet export (CSV) onto this page — plus the TARGETS, BBSP TARGETS and AGENT POOL exports for the target tables (all optional).'
+    );
+    return;
+  }
+
+  const extras = {
+    bdeTargets: state.bdeTargets,
+    bspbTargets: state.bspbTargets,
+    agentPool: state.agentPool
+  };
+
+  const current = computeDashboard(months[0].feed.rows, extras);
+  const previous = months[1] ? computeDashboard(months[1].feed.rows, extras) : null;
+
+  app.innerHTML = '';
+  if (sourceNotes && sourceNotes.length) {
+    const banner = document.createElement('div');
+    banner.className = 'feed-banner';
+    banner.textContent = `Fed by: ${sourceNotes.join(' · ')}`;
+    app.appendChild(banner);
+  }
+  renderDashboard(app, { current, previous, monthCount: months.length });
+}
+
+async function renderFromCsv(text, fileName) {
+  const rows = parseCsv(text);
+  const type = detectFeedType(rows[0]);
+  if (!type) throw new Error('unrecognized header row');
+  applyFeed(type, rows, fileName);
+  const notes = [...state.validations.entries()].map(([month, feed]) => `${feed.fileName} (${month})`);
+  if (state.bdeTargets) notes.push('TARGETS');
+  if (state.bspbTargets) notes.push('BBSP TARGETS');
+  if (state.agentPool) notes.push('AGENT POOL');
+  rebuild(notes);
 }
 
 function readFile(file) {
@@ -45,22 +123,46 @@ function readFile(file) {
 
 async function boot() {
   try {
-    const response = await fetch(DEFAULT_CSV_URL);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const text = await response.text();
-    if (!text.trim()) throw new Error('empty data file');
-    await renderFromCsv(text, 'validation.csv');
+    for (const feed of FEEDS) {
+      let response;
+      try {
+        response = await fetch(feed.url);
+      } catch (networkError) {
+        if (feed.required) throw networkError;
+        continue; // optional feed not present — that is fine
+      }
+      if (!response.ok) {
+        if (feed.required) throw new Error(`HTTP ${response.status} for ${feed.url}`);
+        continue;
+      }
+      const rows = parseCsv(await response.text());
+      // Route every file by its header shape; the filename is only a hint.
+      const type = detectFeedType(rows[0]);
+      if (!type) {
+        if (feed.required) throw new Error('The default VALIDATION file has unrecognized columns.');
+        console.warn(`Skipping unrecognized default feed: ${feed.url}`);
+        continue;
+      }
+      applyFeed(type, rows, feed.url.replace('data/', ''));
+    }
   } catch (error) {
     showEmptyState(
-      'No data loaded yet',
-      'Export your VALIDATION sheet (File ▸ Download ▸ Comma-separated values) and drop the file anywhere on this page.'
+      'Data could not be loaded',
+      'Check that data/validation.csv is a VALIDATION sheet export (File ▸ Download ▸ Comma-separated values). You can also drag new CSV files straight onto this page.'
     );
-    console.info('No default CSV loaded:', error.message);
+    console.error('Boot failed:', error);
+    return;
   }
+
+  const notes = [...state.validations.entries()].map(([month, feed]) => `${feed.fileName} (${month})`);
+  if (state.bdeTargets) notes.push('TARGETS');
+  if (state.bspbTargets) notes.push('BBSP TARGETS');
+  if (state.agentPool) notes.push('AGENT POOL');
+  rebuild(notes);
 }
 
-// Drag a new VALIDATION export onto the page to preview it without
-// touches to the repo data file.
+// ---- drag & drop: one or many files, each routed by its header shape ----
+
 let dragDepth = 0;
 let overlay = null;
 
@@ -68,7 +170,7 @@ function ensureOverlay() {
   if (overlay) return overlay;
   overlay = document.createElement('div');
   overlay.className = 'drop-overlay';
-  overlay.textContent = 'Drop your VALIDATION CSV to feed the report';
+  overlay.textContent = 'Drop your CSV exports (VALIDATION, TARGETS, BBSP TARGETS, AGENT POOL)';
   document.body.appendChild(overlay);
   return overlay;
 }
@@ -87,20 +189,30 @@ window.addEventListener('dragleave', () => {
   if (dragDepth === 0 && overlay) overlay.classList.remove('visible');
 });
 
-window.addEventListener('drop', (event) => {
+window.addEventListener('drop', async (event) => {
   event.preventDefault();
   dragDepth = 0;
   if (overlay) overlay.classList.remove('visible');
 
-  const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-  if (!file) return;
+  const files = Array.from(event.dataTransfer?.files || []);
+  if (!files.length) return;
 
-  readFile(file)
-    .then((text) => renderFromCsv(text, file.name))
-    .catch((error) => {
-      console.error('Could not read the dropped CSV:', error);
-      showEmptyState('Could not read that file', 'Make sure it is a Comma-separated values (.csv) export of the VALIDATION sheet.');
-    });
+  const unapplied = [];
+  for (const file of files) {
+    try {
+      await renderFromCsv(await readFile(file), file.name);
+    } catch (error) {
+      console.error(`Could not use ${file.name}:`, error);
+      unapplied.push(file.name);
+    }
+  }
+
+  if (unapplied.length === files.length) {
+    showEmptyState(
+      'Could not use those files',
+      'None of the dropped files matched a VALIDATION, TARGETS, BBSP TARGETS, or AGENT POOL export. Export each tab with File ▸ Download ▸ Comma-separated values.'
+    );
+  }
 });
 
 boot();
