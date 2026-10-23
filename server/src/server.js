@@ -62,10 +62,11 @@ app.use('/api/sync', syncRoutes);
 app.get('/api/health', async (req, res) => {
   try {
     const dbCheck = await pool.query('SELECT NOW()');
-    res.json({ 
-      status: 'ok', 
+    res.json({
+      status: 'ok',
       timestamp: new Date(),
-      dbTime: dbCheck.rows[0].now
+      dbTime: dbCheck.rows[0].now,
+      build: process.env.RENDER_GIT_COMMIT ? String(process.env.RENDER_GIT_COMMIT).slice(0, 7) : 'local'
     });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
