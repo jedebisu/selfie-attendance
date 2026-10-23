@@ -15,6 +15,9 @@ const FEEDS = [
   // Optional second month (e.g. last month's export) — same routing, keyed by
   // its own data month; powers the Month-vs-Month page from files as well.
   { url: 'data/validation-previous.csv', required: false },
+  // Pinned archive months (real files held locally under skip-worktree;
+  // GitHub carries small placeholders). Add one line per archived month:
+  { url: 'data/validation-october.csv', required: false },
   { url: 'data/bde-targets.csv', required: false },
   { url: 'data/bbsp-targets.csv', required: false },
   { url: 'data/agent-pool.csv', required: false }
@@ -69,7 +72,11 @@ function applyFeed(type, rows, fileName) {
     if (!best) throw new Error('no dates found in this VALIDATION export');
     const label = best.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
     state.validations.set(label, { rows, asOf: best, fileName });
-    if (!state.selectedMonth) state.selectedMonth = label;
+    // Newest fed month takes the view by default (so booting with Oct+Sep
+    // pinned opens on October, no matter the feed order); a manually picked
+    // older month only changes when a NEWER month arrives.
+    const selected = state.selectedMonth && state.validations.get(state.selectedMonth);
+    if (!selected || best > selected.asOf) state.selectedMonth = label;
     return `VALIDATION for ${label}`;
   }
   if (type === 'bdeTargets') { state.bdeTargets = parseBdeTargets(rows); return 'TARGETS'; }
