@@ -125,16 +125,23 @@ const main = async () => {
     // 1) Hash gate — skip identical exports (fast no-op on every deploy).
     const currentHash = sha256File(GZ_PATH);
     const storedHash = fs.existsSync(HASH_PATH) ? fs.readFileSync(HASH_PATH, 'utf-8').trim() : '';
+    let previouslySynced = false;
 
     // Fresh export AND a probe proves the new columns are populated? skip.
-    let previouslySynced = false;
+    // (Probe is failure-tolerant: on databases that predate the new columns
+    // the query itself throws — treat that as "not synced" and continue.)
+    let probe = null;
     if (currentHash === storedHash) {
-      const probe = await client.query(
-        `SELECT nap_address, ports_reserved FROM naps WHERE nap_id = $1`,
-        [SAMPLE_NAP_ID]
-      );
-      if (probe.rows.length > 0 && probe.rows[0].nap_address) previouslySynced = true;
+      try {
+        probe = await client.query(
+          `SELECT nap_address, ports_reserved FROM naps WHERE nap_id = $1`,
+          [SAMPLE_NAP_ID]
+        );
+      } catch (_) {
+        probe = null;
+      }
     }
+    if (probe && probe.rows.length > 0 && probe.rows[0].nap_address) previouslySynced = true;
     if (previouslySynced) {
       console.log(`naps export unchanged (sha256 ${currentHash.slice(0, 12)}…) — import skipped.`);
       process.exit(0);

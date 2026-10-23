@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "db:migrate": "node src/config/migrate.js",
+    "db:migrate": "node src/config/migrate.js && node scripts/import-naps-update.js",
     "db:seed": "node src/config/seed.js",
     "db:import-naps": "node src/config/import-naps-production.js",
     "naps:sync": "node scripts/import-naps-update.js",
