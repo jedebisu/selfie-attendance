@@ -108,6 +108,35 @@ function upsertSqlFor(colNames) {
   `;
 }
 
+// Multi-row batch: 1000 rows x ~23 cols stays far below Postgres' 65535
+// parameter limit, and 321 statements finish in seconds instead of the
+// 320k round trips a per-row loop needs (minutes -> hour on free tiers).
+const ROWS_PER_STATEMENT = 1000;
+
+/** Pure: turn an array of rows into ONE multi-row upsert {sql, values}. */
+function buildBatchUpsert(colNames, rows) {
+  const cols = colNames.join(', ');
+  const rowGroups = [];
+  const values = [];
+  let p = 0;
+  for (const row of rows) {
+    const ph = colNames.map((c) => `$${++p}`);
+    rowGroups.push(`(${ph.join(', ')})`);
+    for (const c of colNames) values.push(row[c] === undefined ? null : row[c]);
+  }
+  const updates = colNames
+    .filter((c) => c !== 'nap_id')
+    .map((c) => `${c} = EXCLUDED.${c}`)
+    .join(', ');
+  const sql = `
+    INSERT INTO naps (${cols}) VALUES ${rowGroups.join(', ')}
+    ON CONFLICT (nap_id) DO UPDATE SET
+      ${updates},
+      updated_at = NOW()
+  `;
+  return { sql, values };
+}
+
 function sha256File(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
@@ -156,19 +185,16 @@ const main = async () => {
     console.log(`Parsed ${rows.length} rows from naps_export.csv.gz`);
     if (rows.length === 0) throw new Error('export is empty — refusing to wipe progress');
 
-    // 4) Batch upsert in one transaction.
+    // 4) Batch upsert in one transaction (1000-row multi-row statements).
     const colNames = Object.keys(rows[0]);
     if (!colNames.includes('nap_id')) throw new Error('export has no nap_id column');
-    const sql = upsertSqlFor(colNames);
 
     await client.query('BEGIN');
-    for (let batchStart = 0; batchStart < rows.length; batchStart += BATCH_SIZE) {
-      const batch = rows.slice(batchStart, batchStart + BATCH_SIZE);
-      for (const row of batch) {
-        const values = colNames.map((c) => (row[c] === undefined ? null : row[c]));
-        await client.query(sql, values);
-      }
-      console.log(`  upserted ${Math.min(batchStart + BATCH_SIZE, rows.length)}/${rows.length}…`);
+    for (let batchStart = 0; batchStart < rows.length; batchStart += ROWS_PER_STATEMENT) {
+      const batch = rows.slice(batchStart, batchStart + ROWS_PER_STATEMENT);
+      const { sql, values } = buildBatchUpsert(colNames, batch);
+      await client.query(sql, values);
+      console.log(`  upserted ${Math.min(batchStart + ROWS_PER_STATEMENT, rows.length)}/${rows.length}…`);
     }
     await client.query('COMMIT');
     console.log(`Successfully upserted ${rows.length} NAPs.`);
@@ -194,4 +220,4 @@ const main = async () => {
 };
 
 if (require.main === module) main();
-module.exports = { parseExport, columnsToAlter, upsertSqlFor };
+module.exports = { parseExport, columnsToAlter, upsertSqlFor, buildBatchUpsert };
