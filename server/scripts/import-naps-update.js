@@ -179,25 +179,44 @@ const main = async () => {
     // 2) Idempotent schema migration.
     await client.query(columnsToAlter());
 
-    // 3) Read + parse export.
-    const csvText = require('zlib').gunzipSync(fs.readFileSync(GZ_PATH)).toString('utf-8');
-    const rows = parseExport(csvText);
-    console.log(`Parsed ${rows.length} rows from naps_export.csv.gz`);
-    if (rows.length === 0) throw new Error('export is empty — refusing to wipe progress');
-
-    // 4) Batch upsert in one transaction (1000-row multi-row statements).
-    const colNames = Object.keys(rows[0]);
-    if (!colNames.includes('nap_id')) throw new Error('export has no nap_id column');
-
-    await client.query('BEGIN');
-    for (let batchStart = 0; batchStart < rows.length; batchStart += ROWS_PER_STATEMENT) {
-      const batch = rows.slice(batchStart, batchStart + ROWS_PER_STATEMENT);
+    // 3+4) STREAM the gz→csv→records pipeline directly into the upsert loop
+    // (never materializes all rows: the buffer-everything version peaked at
+    // ~790 MB RSS and was OOM-killed inside Render's 512 MB build container
+    // right after the ALTER committed — the split-brain bug behind
+    // "columns exist, data null"). Batched multi-row upserts, one transaction.
+    let colNames = null;
+    let batch = [];
+    let totalRows = 0;
+    const upsertBatch = async () => {
+      if (!batch.length) return;
+      if (!colNames) {
+        colNames = Object.keys(batch[0]);
+        if (!colNames.includes('nap_id')) throw new Error('export has no nap_id column');
+      }
       const { sql, values } = buildBatchUpsert(colNames, batch);
       await client.query(sql, values);
-      console.log(`  upserted ${Math.min(batchStart + ROWS_PER_STATEMENT, rows.length)}/${rows.length}…`);
+      totalRows += batch.length;
+      batch = [];
+    };
+
+    const { parse: parseCsvStream } = require('csv-parse');
+    const zlib = require('zlib');
+    const parser = fs.createReadStream(GZ_PATH)
+      .pipe(zlib.createGunzip())
+      .pipe(parseCsvStream({ columns: true, skip_empty_lines: true, bom: true, relax_column_count: true }));
+
+    await client.query('BEGIN');
+    for await (const rec of parser) {
+      batch.push(coerceRow(rec));
+      if (batch.length >= ROWS_PER_STATEMENT) {
+        await upsertBatch();
+        console.log(`  upserted ${totalRows} rows…`);
+      }
     }
+    await upsertBatch();
+    if (totalRows === 0) throw new Error('export is empty — refusing to wipe progress');
     await client.query('COMMIT');
-    console.log(`Successfully upserted ${rows.length} NAPs.`);
+    console.log(`Successfully upserted ${totalRows} NAPs.`);
 
     // 5) Indexes (idempotent, mirrors import-naps-production.js).
     await client.query('CREATE INDEX IF NOT EXISTS idx_naps_coords ON naps(dp_nap_lat, dp_nap_long)');
