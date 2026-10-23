@@ -29,11 +29,13 @@ CSV input (semicolon-delimited, 19-24 columns):
   22: Ports Contingency
   23: Ports Available
 
-Output (17 columns, comma-separated, gzipped):
+Output (23 columns, comma-separated, gzipped):
   nap_id, cabinet, location_type, building_served, floors_served,
   working_lines, vacant_lines, total_capacity, cfs_region, city_name,
   province_name, dp_nap_lat, dp_nap_long, naps_status, olt_id,
-  sell_status, barangay_name
+  sell_status, barangay_name,
+  ports_reserved, ports_defective, ports_contingency,
+  discovered_when, customer_type, nap_address
 """
 
 import gzip
@@ -105,6 +107,8 @@ HEADERS = [
     'working_lines', 'vacant_lines', 'total_capacity', 'cfs_region',
     'city_name', 'province_name', 'dp_nap_lat', 'dp_nap_long', 'naps_status',
     'olt_id', 'sell_status', 'barangay_name',
+    'ports_reserved', 'ports_defective', 'ports_contingency',
+    'discovered_when', 'customer_type', 'nap_address',
 ]
 
 
@@ -208,6 +212,12 @@ def main():
                 clean_value(row[16], 100),                 # olt_id
                 '',                                        # sell_status
                 brgy or '',                                # barangay_name
+                str(parse_int(row[20])),                   # ports_reserved
+                str(parse_int(row[21])),                   # ports_defective
+                str(parse_int(row[22])),                   # ports_contingency
+                clean_value(row[14], 40),                  # discovered_when (MM-DD-YYYY HH-MM)
+                clean_value(row[15], 100),                 # customer_type
+                clean_value(';'.join(address_parts)),      # nap_address (verbatim report string)
             ]
 
             # Deduplicate by nap_id, keeping the LAST occurrence
