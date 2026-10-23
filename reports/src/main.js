@@ -197,19 +197,36 @@ function readFile(file) {
 async function consumeFiles(files) {
   if (!files.length) return;
   const unapplied = [];
+  let applied = 0;
   for (const file of files) {
     try {
       await consumeFile(await readFile(file), file.name);
+      applied++;
     } catch (error) {
       console.error(`Could not use ${file.name}:`, error);
       unapplied.push(file.name);
     }
   }
-  if (unapplied.length) {
+  // A refused file must NOT wipe the dashboard when other files in the
+  // same batch loaded fine — only nag with a dismissible banner.
+  if (applied === 0) {
     showEmptyState(
       'Some files could not be used',
       `Not recognized as a VALIDATION, TARGETS, BBSP TARGETS, or AGENT POOL export: ${unapplied.join(', ')}. Export each tab with File ▸ Download ▸ Comma-separated values.`
     );
+  } else if (unapplied.length) {
+    const note = document.createElement('div');
+    note.className = 'upload-warning';
+    note.appendChild(Object.assign(document.createElement('span'), {
+      textContent: `Skipped (not a VALIDATION/TARGETS/BBSP TARGETS/AGENT POOL export): ${unapplied.join(', ')}`
+    }));
+    const close = document.createElement('button');
+    close.className = 'upload-warning-close';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '×';
+    close.addEventListener('click', () => note.remove());
+    note.appendChild(close);
+    app.appendChild(note);
   }
 }
 

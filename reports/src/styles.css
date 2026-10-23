@@ -579,6 +579,37 @@ select.topbar-btn.month-badge { appearance: auto; padding-right: 8px; }
 .vs-chip.worse { background: #fce9e9; color: var(--red); }
 .vs-chip.flat { background: #eef1f5; color: var(--muted); }
 
+/* partial-upload notice: dashboard stays, refused files are named here */
+.upload-warning {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 22px;
+  max-width: min(720px, 92vw);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fff7e8;
+  border: 1px solid #f0d9ae;
+  border-radius: 10px;
+  color: #8a5b00;
+  font-size: 12.5px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+}
+
+.upload-warning span { min-width: 0; }
+
+.upload-warning-close {
+  border: 0;
+  background: transparent;
+  color: #8a5b00;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
 .vs-empty {
   max-width: 480px;
   margin: 70px auto;

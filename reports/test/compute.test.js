@@ -443,3 +443,23 @@ test('pctChange covers the vs-last-week math too: null on zero base, fraction ot
   assert.ok(Math.abs(pctChange(15, 10) - 0.5) < 1e-9);
   assert.ok(Math.abs(pctChange(10, 15) - (-1 / 3)) < 1e-9);
 });
+
+test('weekly tallies exclude rows dated in a DIFFERENT month (only day-of-month matched before)', () => {
+  // October feed carrying one September-dated row: generated 09/30/26,
+  // completed (and last-updated) in October. It must count as a record,
+  // but not in October's apps-gen / installed / pace / daily tallies.
+  const sepStray = [
+    'GLS-9999,FOUND,"Stray, Sep","1 Test St",09170000000,1299,T1,TERR-1,FAC-1,Completed,09/30/26,10/02/26,AGT-001,Reyes, EBISU STORE'
+  ];
+  const res = computeDashboard(parseCsv(V_TEXT + '\n' + sepStray.join('\n')), { ...BDE, ...POOL });
+  assert.equal(res.kpis.totalOrders, 7);   // still counted as a record
+  assert.equal(res.kpis.actual, 5);        // and the ACTUAL card sees it (whole-file aggregate)
+  assert.equal(res.monthDays, 31);
+  // but October's per-week/day tallies follow the month of each DATE:
+  // gen is September -> excluded from apps-gen; lastUpdate is October ->
+  // legitimately counts as an October installation.
+  assert.equal(res.weeklyBlocks.appsGen.reduce((s, w) => s + w.total, 0), 5);
+  assert.equal(res.appsGenMonthly.total, 5);
+  assert.equal(res.weeklyBlocks.installed.reduce((s, w) => s + w.total, 0), 5);
+  assert.equal(res.pace.actual.at(-1), 5); // pace = in-month completions
+});

@@ -326,11 +326,12 @@ export function computeDashboard(data, extras = {}, filters = {}) {
   const records = [];
   let actual = 0, gfpActual = 0, gahActual = 0, notFound = 0;
   let dataAsOf = null;
-  const dayCount = {}, territoryActual = {}, areaActual = {}, bdeActuals = {}, bbspActuals = {};
-  // per-day tallies driving the deployed-style weekly blocks:
+  // per-day tallies driving the deployed-style weekly blocks / pace / daily:
   //   appsGen* = ALL committed rows by DATE APPS GEN (TOTAL/GFP/GAH)
-  //   gfpDays/gahDays = completed rows by LAST UPDATE, per technology
+  //   dayCount/gfpDays/gahDays = completed rows by LAST UPDATE
+  //   (filled AFTER the month loop — month-aware, see the tail section)
   const appsGenDays = {}, appsGenGfp = {}, appsGenGah = {}, gfpDays = {}, gahDays = {};
+  const dayCount = {}, territoryActual = {}, areaActual = {}, bdeActuals = {}, bbspActuals = {};
   const agentBags = {};
 
   for (let i = 1; i < data.length; i++) {
@@ -374,14 +375,6 @@ export function computeDashboard(data, extras = {}, filters = {}) {
     const lastUpdate = parseSheetDate(record.lastUpdate);
     if (lastUpdate && (!dataAsOf || lastUpdate > dataAsOf)) dataAsOf = lastUpdate;
 
-    const genDate = parseSheetDate(record.dateAppsGen);
-    if (genDate) {
-      const gday = genDate.getDate();
-      appsGenDays[gday] = (appsGenDays[gday] || 0) + 1;
-      if (tech === 'GFP') appsGenGfp[gday] = (appsGenGfp[gday] || 0) + 1;
-      if (tech === 'GAH') appsGenGah[gday] = (appsGenGah[gday] || 0) + 1;
-    }
-
     if (isCompleted) {
       actual++;
       if (tech === 'GFP') gfpActual++;
@@ -391,13 +384,6 @@ export function computeDashboard(data, extras = {}, filters = {}) {
       territoryActual[territory] = (territoryActual[territory] || 0) + 1;
       const area = record.area || 'BLANK';
       areaActual[area] = (areaActual[area] || 0) + 1;
-
-      if (lastUpdate) {
-        const day = lastUpdate.getDate();
-        dayCount[day] = (dayCount[day] || 0) + 1;
-        if (tech === 'GFP') gfpDays[day] = (gfpDays[day] || 0) + 1;
-        if (tech === 'GAH') gahDays[day] = (gahDays[day] || 0) + 1;
-      }
 
       // Every completing agent appears in productivity, even when the pool
       // cannot attribute them (BBSP/BDE stay blank in that case).
@@ -423,6 +409,32 @@ export function computeDashboard(data, extras = {}, filters = {}) {
       }
     }
   }
+
+  // ---- month-aware per-day tallies (weekly blocks / pace / daily) --------
+  // appsGen* = ALL committed rows by DATE APPS GEN; dayCount/gfpDays/gahDays
+  // = completed rows by LAST UPDATE. Only rows dated inside the data month
+  // (the month of dataAsOf = max LAST UPDATE) count — a September-dated row
+  // riding along in an October export must not inflate October's WK4/WK5.
+  const monthKey = (date) => (date ? `${date.getFullYear()}-${date.getMonth()}` : '');
+  const anchorKey = monthKey(dataAsOf);
+  records.forEach((record) => {
+    const gen = parseSheetDate(record.dateAppsGen);
+    if (gen && monthKey(gen) === anchorKey) {
+      const gday = gen.getDate();
+      appsGenDays[gday] = (appsGenDays[gday] || 0) + 1;
+      if (record.tech === 'GFP') appsGenGfp[gday] = (appsGenGfp[gday] || 0) + 1;
+      if (record.tech === 'GAH') appsGenGah[gday] = (appsGenGah[gday] || 0) + 1;
+    }
+    if (String(record.status || '').trim().toUpperCase() === COMPLETED_STATUS) {
+      const lu = parseSheetDate(record.lastUpdate);
+      if (lu && monthKey(lu) === anchorKey) {
+        const day = lu.getDate();
+        dayCount[day] = (dayCount[day] || 0) + 1;
+        if (record.tech === 'GFP') gfpDays[day] = (gfpDays[day] || 0) + 1;
+        if (record.tech === 'GAH') gahDays[day] = (gahDays[day] || 0) + 1;
+      }
+    }
+  });
 
   const daysElapsed = dataAsOf ? dataAsOf.getDate() : 0;
 
@@ -533,6 +545,7 @@ export function computeDashboard(data, extras = {}, filters = {}) {
   // ---- weekly: deployed-style calendar-week blocks -----------------------
   // appsGen = ALL rows by DATE APPS GEN; installed = completed by LAST
   // UPDATE; rows TOTAL/GFP/GAH per week, reconciling to the month totals.
+  // (Tallies already built month-aware above — see "month-aware per-day tallies".)
   const weeks = calendarWeeks(dataAsOf);
   const tallyWeeks = (weeks, totals, gfpMap, gahMap) => weeks.map((def) => {
     let total = 0, gfp = 0, gah = 0;
