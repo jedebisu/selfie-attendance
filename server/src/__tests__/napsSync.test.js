@@ -5,6 +5,7 @@ const {
   parseExport,
   columnsToAlter,
   upsertSqlFor,
+  buildBatchUpsert,
 } = require('../../scripts/import-naps-update');
 
 describe('parseExport — 23-column naps_export.csv.gz', () => {
@@ -49,6 +50,34 @@ describe('header-driven absence — old 17-column export', () => {
     expect(rows[0].nap_id).toBe('OLD_T1_N01');
     expect(Object.keys(rows[0])).not.toContain('ports_reserved');
     expect(Object.keys(rows[0])).not.toContain('nap_address');
+  });
+});
+
+describe('buildBatchUpsert — chunked multi-row statements', () => {
+  it('numbers placeholders across rows and flattens values in column order', () => {
+    const cols = ['nap_id', 'working_lines', 'nap_address'];
+    const rows = [
+      { nap_id: 'A', working_lines: 3, nap_address: 'x, y' },
+      { nap_id: 'B', working_lines: undefined, nap_address: null },
+    ];
+    const { sql, values } = buildBatchUpsert(cols, rows);
+    expect(sql).toContain('($1, $2, $3), ($4, $5, $6)');
+    expect(values).toEqual([
+      'A', 3, 'x, y',
+      'B', null, null,
+    ]);
+    expect(sql).toContain('ON CONFLICT (nap_id) DO UPDATE SET');
+    expect(sql).toContain('nap_address = EXCLUDED.nap_address');
+  });
+
+  it('max batch size keeps parameter count under the Postgres limit', () => {
+    // 1000 rows x 23 cols = 23000 parameters < 65535
+    const cols = Array.from({ length: 23 }, (_, i) => `c${i}`);
+    const row = Object.fromEntries(cols.map((c) => [c, 1]));
+    const { sql } = buildBatchUpsert(cols, Array(1000).fill(row));
+    const params = sql.match(/\$\d+/g).length;
+    expect(params).toBe(23000);
+    expect(params).toBeLessThanOrEqual(65535);
   });
 });
 
