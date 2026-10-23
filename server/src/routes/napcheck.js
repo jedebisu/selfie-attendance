@@ -130,6 +130,8 @@ const SELECT_COLS = `
   working_lines, vacant_lines, total_capacity, cfs_region,
   city_name, province_name, barangay_name, dp_nap_lat, dp_nap_long,
   naps_status, olt_id, sell_status, updated_at,
+  ports_reserved, ports_defective, ports_contingency,
+  discovered_when, customer_type, nap_address,
   CASE
     WHEN vacant_lines = 0 THEN 'red'
     WHEN vacant_lines <= 8 THEN 'yellow'
