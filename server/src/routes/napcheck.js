@@ -4,6 +4,7 @@ const { pool } = require('../config/database');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const napCache = require('./napcheckCache');
 
 // ---------------------------------------------------------------------------
 // Public, read-only NAP Checking endpoints for the nap.ebisudps.com web app.
@@ -463,7 +464,7 @@ router.get('/map', async (req, res) => {
     const minimal = req.query.cols === 'min';
     // The summary counts the FULL filtered set — identical for every viewport.
     // When only the bbox changed, the client passes with_summary=0 (it already
-    // holds the summary), skipping two heavy COUNT queries per pan/zoom.
+    // holds the summary), skipping the COUNT queries per pan/zoom.
     const wantSummary = req.query.with_summary !== '0';
 
     const limit = Math.min(Math.max(parseInt(String(req.query.limit || 1000), 10) || 1000, 1), 2500);
@@ -484,6 +485,32 @@ router.get('/map', async (req, res) => {
       }
     }
 
+    // --- Cache lookup (in-memory, TTL 60 s + version-stamped invalidation) ---
+    // Cache key covers every input the response depends on; the version
+    // stamp (report date + max(updated_at)) covers any data change.
+    if (minimal) {
+      const cacheKey = [
+        fw, fparams.join('\u0001'),
+        bbox ? [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat].map((n) => +n.toFixed(5)).join(',') : '',
+        wantSummary ? 'summary' : 'nosummary',
+        limit, offset,
+      ].join('\u0002');
+      const version = await napCache.currentVersion();
+      const hit = napCache.cacheGet(cacheKey, version);
+      if (hit) {
+        res.set('Content-Type', 'application/json');
+        if (hit.bodyBuffer) {
+          res.set('Content-Encoding', 'gzip');
+          res.set('Vary', 'Accept-Encoding, Cache-Version');
+          return res.send(hit.bodyBuffer);
+        }
+        res.set('Vary', 'Cache-Version');
+        return res.send(hit.bodyJson);
+      }
+      // remember it for the store step below
+      res.locals._napCache = { key: cacheKey, version };
+    }
+
     const geoCond = hasFilters
       ? `${COORD_SAFE} AND ${fw}`
       : COORD_SAFE;
@@ -496,13 +523,15 @@ router.get('/map', async (req, res) => {
 
     let s = null;
     if (wantSummary) {
+      // Single pass: one COUNT per bucket via CASE expressions over the
+      // visibility summary + total (replaces four COUNT(*) FILTER passes).
       const summary = await pool.query(`
         SELECT
           COUNT(*)::int AS total_matching,
-          COUNT(*) FILTER (WHERE vacant_lines IS NULL)::int AS unknown,
-          COUNT(*) FILTER (WHERE vacant_lines = 0)::int AS full,
-          COUNT(*) FILTER (WHERE vacant_lines > 0 AND vacant_lines <= ${LOW_AVAILABILITY_THRESHOLD})::int AS warning,
-          COUNT(*) FILTER (WHERE vacant_lines > ${LOW_AVAILABILITY_THRESHOLD})::int AS available
+          SUM(CASE WHEN vacant_lines IS NULL THEN 1 ELSE 0 END)::int AS unknown,
+          SUM(CASE WHEN vacant_lines = 0 THEN 1 ELSE 0 END)::int AS full,
+          SUM(CASE WHEN vacant_lines > 0 AND vacant_lines <= ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS warning,
+          SUM(CASE WHEN vacant_lines > ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS available
         FROM naps
         WHERE ${baseWhere}
       `, fparams);
@@ -562,7 +591,25 @@ router.get('/map', async (req, res) => {
       rows: minimal ? rows : undefined,
       naps: minimal ? undefined : rows,
     };
-    if (minimal) return sendMaybeGzip(req, res, payload);
+    if (minimal) {
+      const accepts = String(req.headers['accept-encoding'] || '');
+      const wantsGzip = accepts.includes('gzip');
+      const bodyJson = JSON.stringify(payload);
+      const bodyBuffer = wantsGzip ? zlib.gzipSync(bodyJson, { level: 6 }) : null;
+      // Cache the SUCCESS result (never a failure — failures bail above via
+      // the catch and never reach this store step).
+      const cc = res.locals._napCache;
+      if (cc) napCache.cacheSet(cc.key, cc.version, payload, bodyBuffer, bodyJson);
+      if (wantsGzip) {
+        res.set('Content-Type', 'application/json');
+        res.set('Content-Encoding', 'gzip');
+        res.set('Vary', 'Accept-Encoding, Cache-Version');
+        res.send(bodyBuffer);
+      } else {
+        res.send(bodyJson);
+      }
+      return;
+    }
     return res.json(payload);
   } catch (error) {
     console.error('Error fetching napcheck map data:', error);
