@@ -95,6 +95,20 @@ const VISAYAS_COORD_SQL = `(
 const VISAYAS_WHERE = `((${VISAYAS_CLASSIFICATION_SQL}) OR (${VISAYAS_COORD_SQL}))`.replace(/\s+/g, ' ');
 
 // ---------------------------------------------------------------------------
+// Region scope - narrowed to Central Visayas (CEBU, BOHOL, NEGROS ORIENTAL)
+// per owner request (2026-10-24) to reduce pin load. Pins whose
+// province_name doesn't start with one of these three are excluded, even if
+// they fall inside the broader Visayas bounding box / classification.
+// Revert to `VISAYAS_WHERE` to restore the full Visayas set.
+// ---------------------------------------------------------------------------
+const ALLOWED_PROVINCES_SQL = `(
+  UPPER(COALESCE(province_name, '')) LIKE 'CEBU%'
+  OR UPPER(COALESCE(province_name, '')) LIKE 'BOHOL%'
+  OR UPPER(COALESCE(province_name, '')) LIKE 'NEGROS ORIENTAL%'
+)`;
+const REGION_WHERE = `((${VISAYAS_WHERE}) AND ${ALLOWED_PROVINCES_SQL})`.replace(/\s+/g, ' ');
+
+// ---------------------------------------------------------------------------
 // Rate limiting — tiny in-memory sliding window, per IP. No new dependencies.
 // Public page traffic budget: 120 requests / minute / IP.
 // ---------------------------------------------------------------------------
@@ -172,7 +186,7 @@ router.get('/stats/summary', async (req, res) => {
         SUM(vacant_lines) as available_ports,
         MAX(updated_at) as last_data_update
       FROM naps
-      WHERE ${VISAYAS_WHERE}
+      WHERE ${REGION_WHERE}
     `);
     const payload = JSON.stringify({ region: 'visayas', ...result.rows[0], nap_report_date: napReportDate });
     napCache.cacheSet('stats:summary', version, payload, zlib.gzipSync(payload), payload);
@@ -213,7 +227,7 @@ router.get('/search', async (req, res) => {
           ELSE 2
         END as match_rank
       FROM naps
-      WHERE ${VISAYAS_WHERE}
+      WHERE ${REGION_WHERE}
         AND ( UPPER(nap_id) = UPPER($1) OR UPPER(nap_id) LIKE UPPER($2) OR UPPER(nap_id) LIKE UPPER($3) )
         ${statusFilter}
       ORDER BY match_rank, nap_id
@@ -239,7 +253,7 @@ router.get('/search', async (req, res) => {
             ELSE 4
           END as other_rank
         FROM naps
-        WHERE ${VISAYAS_WHERE}
+        WHERE ${REGION_WHERE}
           AND (
             UPPER(COALESCE(building_served,'')) LIKE UPPER($2)
             OR UPPER(COALESCE(city_name,'')) LIKE UPPER($2)
@@ -290,7 +304,7 @@ router.get('/nearest', async (req, res) => {
             )
           ) AS distance_km
         FROM naps
-        WHERE ${VISAYAS_WHERE}
+        WHERE ${REGION_WHERE}
           AND dp_nap_lat BETWEEN $5 AND $6
           AND dp_nap_long BETWEEN $7 AND $8
           AND dp_nap_lat IS NOT NULL AND dp_nap_long IS NOT NULL
@@ -411,7 +425,7 @@ router.get('/filters', async (req, res) => {
       const result = await pool.query(`
         SELECT DISTINCT barangay_name
         FROM naps
-        WHERE ${VISAYAS_WHERE} AND barangay_name IS NOT NULL AND barangay_name <> ''
+        WHERE ${REGION_WHERE} AND barangay_name IS NOT NULL AND barangay_name <> ''
           AND UPPER(COALESCE(city_name,'')) = UPPER($1)
         ORDER BY barangay_name
         LIMIT 2000
@@ -423,7 +437,7 @@ router.get('/filters', async (req, res) => {
       const result = await pool.query(`
         SELECT COALESCE(city_name,'') AS city, COUNT(*)::int AS c
         FROM naps
-        WHERE ${VISAYAS_WHERE}
+        WHERE ${REGION_WHERE}
           AND ${NORMAL_PROVINCE_SQL} ILIKE $1
         GROUP BY city_name
         ORDER BY c DESC, city
@@ -454,7 +468,7 @@ router.get('/filters', async (req, res) => {
     const result = await pool.query(`
       SELECT ${NORMAL_PROVINCE_SQL} AS name, COUNT(*)::int AS count
       FROM naps
-      WHERE ${VISAYAS_WHERE}
+      WHERE ${REGION_WHERE}
       GROUP BY ${NORMAL_PROVINCE_SQL}
       ORDER BY count DESC, name
     `);
@@ -560,7 +574,7 @@ router.get('/map', async (req, res) => {
     // then limit/offset for the page query.
     // 1) Summary + total_matching share the filter-only WHERE (no bbox) —
     //    only requested when filters changed or on first load.
-    const baseWhere = `${VISAYAS_WHERE} AND ${geoCond}`;
+    const baseWhere = `${REGION_WHERE} AND ${geoCond}`;
 
     let s = null;
     if (wantSummary) {
@@ -597,7 +611,7 @@ router.get('/map', async (req, res) => {
       const page = await pool.query(`
         SELECT id, nap_id, dp_nap_lat, dp_nap_long, vacant_lines
         FROM naps
-        WHERE ${VISAYAS_WHERE} AND ${geoCond}${bboxSql}
+        WHERE ${REGION_WHERE} AND ${geoCond}${bboxSql}
       `, bboxParams);
       tupleCount = page.rows.length;
       rows = page.rows.map((r) => [r.id, r.nap_id, r.dp_nap_lat, r.dp_nap_long, r.vacant_lines]);
@@ -605,7 +619,7 @@ router.get('/map', async (req, res) => {
       const page = await pool.query(`
         SELECT ${MAP_SELECT_COLS}
         FROM naps
-        WHERE ${VISAYAS_WHERE} AND ${geoCond}${bboxSql}
+        WHERE ${REGION_WHERE} AND ${geoCond}${bboxSql}
         ORDER BY nap_id
         LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}
       `, [...bboxParams, limit, offset]);
@@ -669,7 +683,7 @@ router.get('/:code', async (req, res) => {
       SELECT ${SELECT_COLS}
       FROM naps
       WHERE UPPER(nap_id) = UPPER($1)
-        AND ${VISAYAS_WHERE}
+        AND ${REGION_WHERE}
       LIMIT 1
     `, [code]);
 
@@ -690,6 +704,7 @@ router.get('/:code', async (req, res) => {
 
 module.exports = router;
 module.exports.VISAYAS_WHERE = VISAYAS_WHERE;
+module.exports.REGION_WHERE = REGION_WHERE;
 module.exports.VISAYAS_CLASSIFICATION_SQL = VISAYAS_CLASSIFICATION_SQL;
 module.exports.VISAYAS_COORD_SQL = VISAYAS_COORD_SQL;
 module.exports.COORD_SAFE = COORD_SAFE;
