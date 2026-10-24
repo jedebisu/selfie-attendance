@@ -49,10 +49,10 @@ const NAP_SNAPSHOT = path.join(__dirname, '../public/nap-snapshot.json');
 let memorySnapshot = null; // { json: string, etag: string } fallback
 
 async function buildMemorySnapshot() {
-  const { VISAYAS_WHERE, COORD_SAFE, LOW_AVAILABILITY_THRESHOLD, napReportDate } = require('./routes/napcheck');
+  const { REGION_WHERE, COORD_SAFE, LOW_AVAILABILITY_THRESHOLD, napReportDate } = require('./routes/napcheck');
   const rows = await pool.query(
     `SELECT id, nap_id, dp_nap_lat, dp_nap_long, vacant_lines
-     FROM naps WHERE ${VISAYAS_WHERE} AND ${COORD_SAFE}`
+     FROM naps WHERE ${REGION_WHERE} AND ${COORD_SAFE}`
   );
   const s = await pool.query(
     `SELECT
@@ -61,7 +61,7 @@ async function buildMemorySnapshot() {
        SUM(CASE WHEN vacant_lines = 0 THEN 1 ELSE 0 END)::int AS full,
        SUM(CASE WHEN vacant_lines > 0 AND vacant_lines <= ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS warning,
        SUM(CASE WHEN vacant_lines > ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS available
-     FROM naps WHERE ${VISAYAS_WHERE} AND ${COORD_SAFE}`
+     FROM naps WHERE ${REGION_WHERE} AND ${COORD_SAFE}`
   );
   const sr = s.rows[0];
   const json = JSON.stringify({
