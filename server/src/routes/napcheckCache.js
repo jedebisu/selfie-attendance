@@ -6,7 +6,7 @@
 // were re-running that trip every time — now they are served from memory.
 //
 // Design:
-//   - TTL 60 s fallback: nothing in the cache can be stale for more than
+//   - TTL 10 min fallback: nothing in the cache can be stale for more than
 //     60 s, even if an external write (Supabase sync, admin import, manual
 //     row edit) bypasses the invalidation hook.
 //   - Explicit invalidation: a version stamp (`nap_version()`) is attached
@@ -19,7 +19,7 @@
 //   - Multi-instance note: the cache is per-process. On Render, every
 //     build restarts the service, so a deploy (the only in-repo write
 //     path) always clears every instance. External writes self-heal via
-//     the 60 s TTL, bounded per instance.
+//     the 10 min TTL, bounded per instance.
 //   - Bounded memory: at most 8 entries (LRU evict); full-map entry is
 //     ~1 MB serialized — worst case ≈ 8 MB, well within the free plan.
 //
@@ -29,9 +29,17 @@ const { pool } = require('../config/database');
 const fs = require('fs');
 const path = require('path');
 
-const TTL_MS = 60 * 1000;
+const TTL_MS = 10 * 60 * 1000; // 10 min fallback; version-stamp invalidation is the primary freshness mechanism
 const MAX_ENTRIES = 8;
 const REPORT_DATE_FILE = path.join(__dirname, '..', 'config', 'nap_report_date.txt');
+
+// The version stamp is consulted by EVERY cached request. `max(updated_at)`
+// is a full 321k-row scan while unindexed, memoizing it briefly keeps
+// cache hits at ~0 DB cost. The stamp memo window bounds staleness the same
+// way the entry TTL does; the only in-repo write path is the deploy-time
+// import, which restarts the process anyway.
+const STAMP_MEMO_MS = 20 * 1000;
+let stampMemo = { value: null, at: 0 };
 
 let entries = new Map(); // version -> { payload, bodyBuffer, bodyJson, expires, order }
 
@@ -42,6 +50,7 @@ let entries = new Map(); // version -> { payload, bodyBuffer, bodyJson, expires,
  * table with a maintained updated_at column is a fast index-able query.
  */
 async function currentVersion() {
+  if (stampMemo.value && Date.now() - stampMemo.at < STAMP_MEMO_MS) return stampMemo.value;
   let reportDate = null;
   try {
     reportDate = fs.readFileSync(REPORT_DATE_FILE, 'utf-8').trim() || null;
@@ -51,7 +60,9 @@ async function currentVersion() {
     const r = await pool.query('SELECT max(updated_at) AS v FROM naps');
     maxUpdated = r.rows[0].v;
   } catch (_) {}
-  return `${reportDate || 'unknown'}|${maxUpdated || 'none'}`;
+  const stamp = `${reportDate || 'unknown'}|${maxUpdated || 'none'}`;
+  stampMemo = { value: stamp, at: Date.now() };
+  return stamp;
 }
 
 function cacheGet(key, version) {

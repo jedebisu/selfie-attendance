@@ -167,6 +167,7 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_naps_location ON naps(dp_nap_lat, dp_nap_long);
       CREATE INDEX IF NOT EXISTS idx_naps_city ON naps(city_name);
       CREATE INDEX IF NOT EXISTS idx_naps_status ON naps(naps_status);
+      CREATE INDEX IF NOT EXISTS idx_naps_updated_at ON naps(updated_at);
     `);
 
     // Location pings table (GPS tracking while clocked in)
