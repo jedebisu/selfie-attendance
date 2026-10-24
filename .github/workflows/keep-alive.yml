@@ -16,3 +16,8 @@ jobs:
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" -m 120 https://selfie-api-sqgh.onrender.com/api/nap-snapshot.json || true)
           echo "Snapshot responded with: $code"
+      - name: Prime filters + summary (so users never pay cold DB scans)
+        run: |
+          f=$(curl -s -o /dev/null -w "%{http_code}" -m 120 https://selfie-api-sqgh.onrender.com/api/napcheck/filters || true)
+          s=$(curl -s -o /dev/null -w "%{http_code}" -m 120 https://selfie-api-sqgh.onrender.com/api/napcheck/stats/summary || true)
+          echo "filters: $f · summary: $s"

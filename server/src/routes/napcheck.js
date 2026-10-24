@@ -146,6 +146,21 @@ const SELECT_COLS = `
 // ---------------------------------------------------------------------------
 router.get('/stats/summary', async (req, res) => {
   try {
+    // Version-stamped cache — the frontend freshness probe calls this on
+    // EVERY page load; without the cache each probe is a ~15 s full-table
+    // aggregate on a cold cross-region DB.
+    const version = await napCache.currentVersion();
+    const hit = napCache.cacheGet('stats:summary', version);
+    if (hit) {
+      res.set('Content-Type', 'application/json');
+      if (hit.bodyBuffer) {
+        res.set('Content-Encoding', 'gzip');
+        res.set('Vary', 'Accept-Encoding, Cache-Version');
+        return res.send(hit.bodyBuffer);
+      }
+      res.set('Vary', 'Cache-Version');
+      return res.send(hit.bodyJson);
+    }
     const result = await pool.query(`
       SELECT
         COUNT(*) as total_naps,
@@ -159,7 +174,10 @@ router.get('/stats/summary', async (req, res) => {
       FROM naps
       WHERE ${VISAYAS_WHERE}
     `);
-    res.json({ region: 'visayas', ...result.rows[0], nap_report_date: napReportDate });
+    const payload = JSON.stringify({ region: 'visayas', ...result.rows[0], nap_report_date: napReportDate });
+    napCache.cacheSet('stats:summary', version, payload, zlib.gzipSync(payload), payload);
+    res.set('Content-Type', 'application/json');
+    res.send(payload);
   } catch (error) {
     console.error('Error fetching napcheck stats:', error);
     res.status(500).json({ error: 'Failed to fetch NAP statistics' });
