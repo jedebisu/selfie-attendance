@@ -47,7 +47,8 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // building it in-memory on first request and serving that.
 const NAP_SNAPSHOT = path.join(__dirname, '../public/nap-snapshot.json');
 let memorySnapshot = null; // { json: string, etag: string } fallback
-app.get('/nap-snapshot.json', async (req, res) => {
+// Mounted at /api/nap-snapshot.json to match the frontend's API_BASE prefix.
+app.get('/api/nap-snapshot.json', async (req, res) => {
   try {
     // 1) Disk artifact (preferred — written at build time)
     const st = await fs.promises.stat(NAP_SNAPSHOT).catch(() => null);
