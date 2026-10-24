@@ -12,3 +12,7 @@ uploads/*
 
 # local backup dumps
 server/backups/
+
+# Option C fast-path snapshot: regenerated on every naps:sync build.
+# Kept out of git (a 3.4 MB generated artifact; the deploy re-emits it).
+server/public/nap-snapshot.json
