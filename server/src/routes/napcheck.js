@@ -651,4 +651,6 @@ module.exports = router;
 module.exports.VISAYAS_WHERE = VISAYAS_WHERE;
 module.exports.VISAYAS_CLASSIFICATION_SQL = VISAYAS_CLASSIFICATION_SQL;
 module.exports.VISAYAS_COORD_SQL = VISAYAS_COORD_SQL;
+module.exports.COORD_SAFE = COORD_SAFE;
+module.exports.LOW_AVAILABILITY_THRESHOLD = LOW_AVAILABILITY_THRESHOLD;
 module.exports.napReportDate = napReportDate;

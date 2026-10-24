@@ -9,7 +9,7 @@
     "db:migrate": "node src/config/migrate.js && node scripts/import-naps-update.js",
     "db:seed": "node src/config/seed.js",
     "db:import-naps": "node src/config/import-naps-production.js",
-    "naps:sync": "node scripts/import-naps-update.js",
+    "naps:sync": "node scripts/import-naps-update.js && node scripts/emit-nap-snapshot.js",
     "test": "jest --forceExit --detectOpenHandles"
   },
   "dependencies": {
