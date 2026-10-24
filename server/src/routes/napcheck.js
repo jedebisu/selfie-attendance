@@ -416,6 +416,23 @@ router.get('/filters', async (req, res) => {
         cities: result.rows.filter((r) => r.city).map((r) => r.city),
       });
     }
+    // Provinces list — identical for a whole report cycle (only changes when
+    // the NAP data changes), but the DISTINCT scan is one of the slowest
+    // queries on a cold DB (~18 s). Cache it version-stamped like /map.
+    if (!province && !city) {
+      const version = await napCache.currentVersion();
+      const hit = napCache.cacheGet('filters:provinces', version);
+      if (hit) {
+        res.set('Content-Type', 'application/json');
+        if (hit.bodyBuffer) {
+          res.set('Content-Encoding', 'gzip');
+          res.set('Vary', 'Accept-Encoding, Cache-Version');
+          return res.send(hit.bodyBuffer);
+        }
+        res.set('Vary', 'Cache-Version');
+        return res.send(hit.bodyJson);
+      }
+    }
     const result = await pool.query(`
       SELECT ${NORMAL_PROVINCE_SQL} AS name, COUNT(*)::int AS count
       FROM naps
@@ -424,6 +441,12 @@ router.get('/filters', async (req, res) => {
       ORDER BY count DESC, name
     `);
     res.json({ region: 'visayas', provinces: result.rows });
+    if (!province && !city) {
+      // miss on the provinces variant → store for the next cold start
+      const version = await napCache.currentVersion();
+      const payload = JSON.stringify({ region: 'visayas', provinces: result.rows });
+      napCache.cacheSet('filters:provinces', version, payload, zlib.gzipSync(payload), payload);
+    }
   } catch (error) {
     console.error('Error fetching napcheck filters:', error);
     res.status(500).json({ error: 'Failed to fetch filter options' });
