@@ -1,26 +1,30 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import { locationAPI } from '../services/api';
+import { MapBridge, FitAll, MAP_TILES, pinIcon } from '../components/GMapKit';
 import { format, parse } from 'date-fns';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { X, Plus, Minus, Crosshair, Download, Play, Pause, SkipBack } from 'lucide-react';
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+const REFRESH_MS = 20000;
 
-const markerIcon = (color) =>
-  new L.Icon({
-    iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-  });
+const freshnessColor = (pingedAt) => {
+  if (!pingedAt) return 'grey';
+  const mins = (Date.now() - new Date(pingedAt).getTime()) / 60000;
+  if (mins < 6) return 'green';
+  if (mins < 16) return 'orange';
+  return 'red';
+};
+
+const FRESHNESS_HEX = {
+  green: '#22c55e',
+  orange: '#f59e0b',
+  red: '#ef4444',
+  grey: '#9ca3af',
+};
+
+const markerIcon = (color) => pinIcon(FRESHNESS_HEX[color] || FRESHNESS_HEX.grey);
 
 const batteryIcon = (pct) => {
   const color = pct <= 15 ? '#ef4444' : pct <= 30 ? '#f59e0b' : '#22c55e';
@@ -37,16 +41,6 @@ const playbackIcon = new L.DivIcon({
   iconSize: [16, 16],
   iconAnchor: [8, 8],
 });
-
-const REFRESH_MS = 20000;
-
-const freshnessColor = (pingedAt) => {
-  if (!pingedAt) return 'grey';
-  const mins = (Date.now() - new Date(pingedAt).getTime()) / 60000;
-  if (mins < 6) return 'green';
-  if (mins < 16) return 'orange';
-  return 'red';
-};
 
 const positionOf = (user) => {
   if (user.latest) {
@@ -120,6 +114,14 @@ const MapRef = ({ center }) => {
   return null;
 };
 
+const MapApiBridge = ({ mapRef }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (mapRef) mapRef.current = map;
+  }, [map, mapRef]);
+  return null;
+};
+
 const LiveMap = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -132,7 +134,11 @@ const LiveMap = () => {
   const [playbackIndex, setPlaybackIndex] = useState(-1);
   const [playbackPlaying, setPlaybackPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [fitToken, setFitToken] = useState(0);
+  const [focus, setFocus] = useState(null);
   const playbackRef = useRef(null);
+  const mapRef = useRef(null);
   const today = format(new Date(), 'yyyy-MM-dd');
 
   const fetchLive = useCallback(async () => {
@@ -291,271 +297,256 @@ const LiveMap = () => {
   };
 
   const batteryWarnings = users.filter((u) => u.latest?.battery_pct != null && u.latest.battery_pct <= 20);
+  const selectedUser = users.find((u) => u.user_id === selectedUserId) || null;
+  const livePoints = users.map(positionOf).filter(Boolean);
+
+  const openUser = (user) => {
+    setSelectedUserId(user.user_id);
+    const pos = positionOf(user);
+    if (pos) setFocus({ lat: pos[0], lng: pos[1] });
+  };
+
+  const closeSheet = () => {
+    setSelectedUserId(null);
+    setFocus(null);
+  };
 
   return (
-    <div className="map-page">
-      <div className="page-header">
-        <div>
-          <h1>Live Tracking</h1>
-          <p className="subtitle">Real-time GPS of clocked-in employees</p>
-        </div>
-        {trail && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleExportGpx} style={headerBtnStyle} title="Export trail as GPX">
-              📥 GPX
-            </button>
-            <button onClick={clearTrail} style={headerBtnStyle}>
-              Clear Trail
-            </button>
-          </div>
-        )}
-      </div>
+    <div className="gmap-shell">
+      {loading ? (
+        <div className="gmap-loading">Loading live map…</div>
+      ) : (
+        <>
+          <MapContainer
+            center={getCenter()}
+            zoom={13}
+            zoomControl={false}
+            className="gmap-canvas"
+          >
+            <TileLayer url={MAP_TILES.url} attribution={MAP_TILES.attribution} />
+            <MapApiBridge mapRef={mapRef} />
+            <MapBridge focus={focus} />
+            <MapRef center={playbackPosition || undefined} />
+            <FitAll points={livePoints} trigger={fitToken} />
 
-      {batteryWarnings.length > 0 && (
-        <div style={{
-          padding: '8px 20px', background: '#fef2f2', borderBottom: '1px solid #fecaca',
-          fontSize: 13, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          ⚠️ Low battery: {batteryWarnings.map((u) => `${u.name} (${u.latest.battery_pct}%)`).join(', ')}
-        </div>
-      )}
+            {trailPoints.length >= 2 && showSpeed && trailStats.segments.map((seg, i) => (
+              <Polyline
+                key={`speed-seg-${i}`}
+                positions={[seg.from, seg.to]}
+                pathOptions={{ color: speedColor(seg.speedKmh), weight: 4 }}
+              >
+                <Tooltip direction="top" offset={[0, -4]}>
+                  <span style={{ fontSize: 11 }}>
+                    {formatDistance(seg.dist)} - {speedLabel(seg.speedKmh)} ({seg.speedKmh.toFixed(1)} km/h)
+                  </span>
+                </Tooltip>
+              </Polyline>
+            ))}
 
-      <div className="card map-card">
-        {loading ? (
-          <div className="loading">Loading live map...</div>
-        ) : (
-          <>
-            <div className="map-stats">
-              <span>
-                {users.length} employee{users.length === 1 ? '' : 's'} currently clocked in
-              </span>
-              {lastUpdated && (
-                <span> | Updated {format(lastUpdated, 'hh:mm:ss a')} (auto-refreshes every 20s)</span>
-              )}
-              {trail && trailStats.totalKm > 0 && (
-                <span> | Trail: {formatDistance(trailStats.totalKm)}</span>
-              )}
+            {trailPoints.length >= 2 && !showSpeed && (
+              <Polyline positions={trailPoints} pathOptions={{ color: '#3b82f6', weight: 4 }} />
+            )}
+
+            {trailPings.map((ping, i) => (
+              <CircleMarker
+                key={`trail-ping-${i}`}
+                center={ping.position}
+                radius={4}
+                pathOptions={{
+                  color: playbackIndex === i ? '#7c3aed' : '#3b82f6',
+                  fillColor: playbackIndex === i ? '#a78bfa' : '#93c5fd',
+                  fillOpacity: 0.8,
+                  weight: playbackIndex === i ? 3 : 1,
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -6]} permanent={false}>
+                  <span style={{ fontWeight: 600, fontSize: 11 }}>
+                    {format(new Date(ping.time), 'hh:mm a')}
+                    {ping.battery != null && ` · ${ping.battery}%`}
+                  </span>
+                </Tooltip>
+              </CircleMarker>
+            ))}
+
+            {trailEvents.map((evt, i) => (
+              <CircleMarker
+                key={`trail-event-${i}`}
+                center={evt.position}
+                radius={7}
+                pathOptions={{
+                  color: evt.status === 'clock_in' ? '#16a34a' : '#ea580c',
+                  fillColor: evt.status === 'clock_in' ? '#22c55e' : '#f97316',
+                  fillOpacity: 0.9,
+                  weight: 2,
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -8]} permanent>
+                  <span style={{ fontWeight: 700, fontSize: 11 }}>
+                    {evt.status === 'clock_in' ? '🟢' : '🟠'} {format(new Date(evt.time), 'hh:mm a')}
+                  </span>
+                </Tooltip>
+              </CircleMarker>
+            ))}
+
+            {playbackPosition && (
+              <Marker position={playbackPosition} icon={playbackIcon} />
+            )}
+
+            {users.map((user) => {
+              const position = positionOf(user);
+              if (!position) return null;
+              const lowBattery = user.latest?.battery_pct != null && user.latest.battery_pct <= 20;
+              return (
+                <Marker
+                  key={user.user_id}
+                  position={position}
+                  icon={lowBattery
+                    ? batteryIcon(user.latest.battery_pct)
+                    : markerIcon(freshnessColor(user.latest?.pinged_at))}
+                  eventHandlers={{ click: () => openUser(user) }}
+                />
+              );
+            })}
+          </MapContainer>
+
+          {/* ---- Floating panel: status + trail controls ---- */}
+          <div className="gmap-card gmap-top">
+            <div className="gmap-card-title">Live Tracking</div>
+            <div className="gmap-sub">
+              {users.length} employee{users.length === 1 ? '' : 's'} clocked in
+              {lastUpdated && ` · Updated ${format(lastUpdated, 'hh:mm:ss a')} · auto 20s`}
+              {trail && trailStats.totalKm > 0 && ` · Trail ${formatDistance(trailStats.totalKm)}`}
             </div>
+
+            {batteryWarnings.length > 0 && (
+              <div className="gmap-warning">⚠️ Low battery: {batteryWarnings.map((u) => `${u.name} (${u.latest.battery_pct}%)`).join(', ')}</div>
+            )}
 
             {trail && (
-              <div style={{
-                padding: '8px 20px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb',
-                display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', fontSize: 13,
-              }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  From:
-                  <input type="time" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)}
-                    style={{ padding: '2px 6px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 12 }} />
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  To:
-                  <input type="time" value={timeTo} onChange={(e) => setTimeTo(e.target.value)}
-                    style={{ padding: '2px 6px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 12 }} />
-                </label>
-                {(timeFrom || timeTo) && (
-                  <button onClick={() => { setTimeFrom(''); setTimeTo(''); }}
-                    style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 12 }}>
-                    Reset
-                  </button>
-                )}
-                <label style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-                  <input type="checkbox" checked={showSpeed} onChange={(e) => setShowSpeed(e.target.checked)} />
-                  Speed colors
-                </label>
-              </div>
+              <>
+                <div className="gmap-card-actions">
+                  <button className="gmap-pill" onClick={handleExportGpx} title="Export trail as GPX"><Download size={13} /> GPX</button>
+                  <button className="gmap-pill" onClick={clearTrail}>Clear Trail</button>
+                </div>
+                <div className="gmap-trail-filters">
+                  <label>From <input type="time" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} /></label>
+                  <label>To <input type="time" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} /></label>
+                  {(timeFrom || timeTo) && (
+                    <button className="gmap-pill" onClick={() => { setTimeFrom(''); setTimeTo(''); }}>Reset</button>
+                  )}
+                  <label className="gmap-check">
+                    <input type="checkbox" checked={showSpeed} onChange={(e) => setShowSpeed(e.target.checked)} />
+                    Speed colors
+                  </label>
+                </div>
+              </>
             )}
-
-            <MapContainer
-              center={getCenter()}
-              zoom={13}
-              style={{ height: 'calc(100vh - 320px)', width: '100%' }}
-            >
-              <MapRef center={playbackPosition || undefined} />
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-
-              {trailPoints.length >= 2 && showSpeed && trailStats.segments.map((seg, i) => (
-                <Polyline
-                  key={`speed-seg-${i}`}
-                  positions={[seg.from, seg.to]}
-                  pathOptions={{ color: speedColor(seg.speedKmh), weight: 4 }}
-                >
-                  <Tooltip direction="top" offset={[0, -4]}>
-                    <span style={{ fontSize: 11 }}>
-                      {formatDistance(seg.dist)} - {speedLabel(seg.speedKmh)} ({seg.speedKmh.toFixed(1)} km/h)
-                    </span>
-                  </Tooltip>
-                </Polyline>
-              ))}
-
-              {trailPoints.length >= 2 && !showSpeed && (
-                <Polyline positions={trailPoints} pathOptions={{ color: '#3b82f6', weight: 4 }} />
-              )}
-
-              {trailPings.map((ping, i) => (
-                <CircleMarker
-                  key={`trail-ping-${i}`}
-                  center={ping.position}
-                  radius={4}
-                  pathOptions={{
-                    color: playbackIndex === i ? '#7c3aed' : '#3b82f6',
-                    fillColor: playbackIndex === i ? '#a78bfa' : '#93c5fd',
-                    fillOpacity: 0.8,
-                    weight: playbackIndex === i ? 3 : 1,
-                  }}
-                >
-                  <Tooltip direction="top" offset={[0, -6]} permanent={false}>
-                    <span style={{ fontWeight: 600, fontSize: 11 }}>
-                      {format(new Date(ping.time), 'hh:mm a')}
-                      {ping.battery != null && ` · ${ping.battery}%`}
-                    </span>
-                  </Tooltip>
-                </CircleMarker>
-              ))}
-
-              {trailEvents.map((evt, i) => (
-                <CircleMarker
-                  key={`trail-event-${i}`}
-                  center={evt.position}
-                  radius={7}
-                  pathOptions={{
-                    color: evt.status === 'clock_in' ? '#16a34a' : '#ea580c',
-                    fillColor: evt.status === 'clock_in' ? '#22c55e' : '#f97316',
-                    fillOpacity: 0.9,
-                    weight: 2,
-                  }}
-                >
-                  <Tooltip direction="top" offset={[0, -8]} permanent>
-                    <span style={{ fontWeight: 700, fontSize: 11 }}>
-                      {evt.status === 'clock_in' ? '🟢' : '🟠'} {format(new Date(evt.time), 'hh:mm a')}
-                    </span>
-                  </Tooltip>
-                </CircleMarker>
-              ))}
-
-              {playbackPosition && (
-                <Marker position={playbackPosition} icon={playbackIcon}>
-                  <Popup>
-                    <div style={{ fontSize: 12 }}>
-                      <strong>Playback</strong><br />
-                      {playbackIndex + 1} / {trailPings.length}<br />
-                      {format(new Date(trailPings[playbackIndex].time), 'hh:mm:ss a')}
-                    </div>
-                  </Popup>
-                </Marker>
-              )}
-
-              {users.map((user) => {
-                const position = positionOf(user);
-                if (!position) return null;
-                const lowBattery = user.latest?.battery_pct != null && user.latest.battery_pct <= 20;
-                return (
-                  <Marker
-                    key={user.user_id}
-                    position={position}
-                    icon={lowBattery ? batteryIcon(user.latest.battery_pct) : markerIcon(freshnessColor(user.latest?.pinged_at))}
-                  >
-                    <Popup>
-                      <div className="map-popup">
-                        <h4>{user.name}</h4>
-                        <p><strong>{user.employee_id}</strong></p>
-                        <p>Clocked in: {format(new Date(user.clock_in_time), 'hh:mm a')}</p>
-                        {user.latest ? (
-                          <>
-                            <p>Last seen: {format(new Date(user.latest.pinged_at), 'hh:mm a')}</p>
-                            {user.latest.battery_pct != null && (
-                              <p style={{ color: user.latest.battery_pct <= 20 ? '#ef4444' : undefined, fontWeight: user.latest.battery_pct <= 20 ? 700 : 400 }}>
-                                Battery: {user.latest.battery_pct}% {user.latest.battery_pct <= 20 ? '⚠️' : ''}
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          <p>No GPS signal yet</p>
-                        )}
-                        <button
-                          onClick={() => showTrail(user.user_id)}
-                          disabled={trailLoadingId === user.user_id}
-                          style={trailBtnStyle}
-                        >
-                          {trailLoadingId === user.user_id ? 'Loading...' : "Show Today's Trail"}
-                        </button>
-                      </div>
-                    </Popup>
-                  </Marker>
-                );
-              })}
-            </MapContainer>
-
-            {trail && trailPings.length > 0 && (
-              <div style={{
-                padding: '8px 20px', background: '#f5f3ff', borderBottom: '1px solid #e5e7eb',
-                display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
-              }}>
-                <button
-                  onClick={() => {
-                    if (playbackPlaying) {
-                      setPlaybackPlaying(false);
-                    } else {
-                      if (playbackIndex >= trailPings.length - 1) setPlaybackIndex(0);
-                      setPlaybackPlaying(true);
-                    }
-                  }}
-                  style={{ ...trailBtnStyle, background: playbackPlaying ? '#dc2626' : '#7c3aed' }}
-                >
-                  {playbackPlaying ? '⏸ Pause' : playbackIndex >= 0 ? '▶ Resume' : '▶ Play'}
-                </button>
-                {playbackIndex >= 0 && (
-                  <button onClick={() => { setPlaybackIndex(0); setPlaybackPlaying(false); }}
-                    style={{ ...trailBtnStyle, background: '#6b7280' }}>
-                    ⏮ Reset
-                  </button>
-                )}
-                <input
-                  type="range" min="0.5" max="4" step="0.5" value={playbackSpeed}
-                  onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
-                  style={{ width: 80 }}
-                />
-                <span style={{ fontSize: 12, color: '#6b7280' }}>{playbackSpeed}x</span>
-                {playbackIndex >= 0 && (
-                  <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 'auto' }}>
-                    {playbackIndex + 1}/{trailPings.length} · {format(new Date(trailPings[playbackIndex].time), 'hh:mm:ss a')}
-                  </span>
-                )}
-              </div>
-            )}
-
-            <div className="map-stats" style={{ paddingTop: 8 }}>
-              <span>Marker colors: green = seen &lt; 6 min ago, orange = &lt; 16 min, red = stale, grey = no GPS yet</span>
-              {showSpeed && trail && (
-                <span> | Trail colors: <span style={{ color: '#22c55e' }}>green = walking</span>, <span style={{ color: '#f59e0b' }}>orange = vehicle</span>, <span style={{ color: '#ef4444' }}>red = fast</span></span>
-              )}
-            </div>
 
             {noSignalUsers.length > 0 && (
-              <div style={{
-                padding: '10px 16px', borderTop: '1px solid #e5e7eb', fontSize: 13, color: '#6b7280',
-              }}>
-                <strong>No GPS signal yet ({noSignalUsers.length}):</strong>{' '}
-                {noSignalUsers.map((u) => `${u.name} (${u.employee_id})`).join(', ')}
+              <div className="gmap-muted gmap-nosignal" title={noSignalUsers.map((u) => `${u.name} (${u.employee_id})`).join(', ')}>
+                No GPS signal yet ({noSignalUsers.length}): {noSignalUsers.map((u) => u.name).join(', ')}
               </div>
             )}
-          </>
-        )}
-      </div>
+          </div>
+
+          {/* ---- Zoom / fit fabs ---- */}
+          <div className="gmap-fab-group">
+            <button className="gmap-fab" title="Zoom in" onClick={() => mapRef.current?.zoomIn()}><Plus size={18} /></button>
+            <button className="gmap-fab" title="Zoom out" onClick={() => mapRef.current?.zoomOut()}><Minus size={18} /></button>
+            <button className="gmap-fab" title="Fit all employees" onClick={() => setFitToken(t => t + 1)}><Crosshair size={16} /></button>
+          </div>
+
+          {/* ---- Legend ---- */}
+          <div className="gmap-legend">
+            <span><span className="gmap-dot" style={{ background: FRESHNESS_HEX.green }} />&lt;6 min ago</span>
+            <span><span className="gmap-dot" style={{ background: FRESHNESS_HEX.orange }} />&lt;16 min</span>
+            <span><span className="gmap-dot" style={{ background: FRESHNESS_HEX.red }} />Stale</span>
+            {showSpeed && trail && (
+              <>
+                <span><span className="gmap-dot" style={{ background: '#22c55e' }} />Walking</span>
+                <span><span className="gmap-dot" style={{ background: '#f59e0b' }} />Vehicle</span>
+                <span><span className="gmap-dot" style={{ background: '#ef4444' }} />Fast</span>
+              </>
+            )}
+          </div>
+
+          {/* ---- Selected employee bottom card ---- */}
+          {selectedUser && (
+            <div className="gmap-sheet">
+              <button className="gmap-sheet-close" onClick={closeSheet} aria-label="Close"><X size={16} /></button>
+              <div className="gmap-sheet-body">
+                <h4>{selectedUser.name}</h4>
+                <p className="gmap-muted">{selectedUser.employee_id}</p>
+                <div className="gmap-sheet-row">
+                  <span>Clocked in {format(new Date(selectedUser.clock_in_time), 'hh:mm a')}</span>
+                </div>
+                {selectedUser.latest ? (
+                  <div className="gmap-sheet-row">
+                    <span>Last seen {format(new Date(selectedUser.latest.pinged_at), 'hh:mm a')}</span>
+                    {selectedUser.latest.battery_pct != null && (
+                      <span style={{ fontWeight: 700, color: selectedUser.latest.battery_pct <= 20 ? '#ef4444' : undefined }}>
+                        🔋 {selectedUser.latest.battery_pct}%
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="gmap-muted">No GPS signal yet</div>
+                )}
+                <button
+                  className="gmap-sheet-btn"
+                  onClick={() => showTrail(selectedUser.user_id)}
+                  disabled={trailLoadingId === selectedUser.user_id}
+                >
+                  {trailLoadingId === selectedUser.user_id ? 'Loading…' : "Show Today's Trail"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ---- Playback bar ---- */}
+          {trail && trailPings.length > 0 && (
+            <div className="gmap-bottom-panel">
+              <button
+                className="gmap-fab"
+                style={{ width: 36, height: 36, background: playbackPlaying ? '#dc2626' : '#7c3aed', color: '#fff', border: 'none', borderRadius: '50%' }}
+                onClick={() => {
+                  if (playbackPlaying) {
+                    setPlaybackPlaying(false);
+                  } else {
+                    if (playbackIndex >= trailPings.length - 1) setPlaybackIndex(0);
+                    setPlaybackPlaying(true);
+                  }
+                }}
+                title={playbackPlaying ? 'Pause' : 'Play'}
+              >
+                {playbackPlaying ? <Pause size={15} /> : <Play size={15} />}
+              </button>
+              {playbackIndex >= 0 && (
+                <button className="gmap-fab"
+                  style={{ width: 36, height: 36, background: '#6b7280', color: '#fff', border: 'none', borderRadius: '50%' }}
+                  onClick={() => { setPlaybackIndex(0); setPlaybackPlaying(false); }}
+                  title="Reset"
+                >
+                  <SkipBack size={14} />
+                </button>
+              )}
+              <input
+                type="range" min="0.5" max="4" step="0.5" value={playbackSpeed}
+                onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                style={{ width: 90 }}
+              />
+              <span className="gmap-muted" style={{ fontSize: 12 }}>{playbackSpeed}x</span>
+              {playbackIndex >= 0 && (
+                <span className="gmap-muted" style={{ fontSize: 12 }}>
+                  {playbackIndex + 1}/{trailPings.length} · {format(new Date(trailPings[playbackIndex].time), 'hh:mm:ss a')}
+                </span>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
-};
-
-const headerBtnStyle = {
-  padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb',
-  background: '#fff', cursor: 'pointer', fontSize: 13,
-};
-
-const trailBtnStyle = {
-  marginTop: 8, padding: '6px 12px', borderRadius: 6, border: 'none',
-  background: '#0072CE', color: '#fff', cursor: 'pointer', fontSize: 13,
 };
 
 export default LiveMap;

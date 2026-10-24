@@ -2,7 +2,7 @@
   "expo": {
     "name": "EBISU T&A",
     "slug": "selfie-attendance",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -22,7 +22,9 @@
         "NSCameraUsageDescription": "We need camera access to take attendance photos",
         "NSLocationWhenInUseUsageDescription": "We need your location to record your attendance clock in and out",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Your location is tracked in the background only while you are clocked in, so the office can verify work locations",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -48,7 +50,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM"
       ],
-      "versionCode": 34
+      "versionCode": 35
     },
     "plugins": [],
     "extra": {

@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   View, Text, TextInput, TouchableOpacity, StyleSheet, 
   ActivityIndicator, Alert, FlatList 
 } from 'react-native';
 import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
+import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
 import { fetchRoute } from '../services/routing';
-import { debounce, parseCoordinate, formatDateTime } from '../utils/helpers';
+import { debounce, parseCoordinate, formatDateTime, distanceMeters } from '../utils/helpers';
 import { getCachedNapsUpdatedAt, cacheNapsUpdatedAt } from '../services/cache';
 import StatusBadge from '../components/StatusBadge';
 
@@ -22,9 +23,16 @@ const COLORS = {
   gray: '#6b7280',
   lightGray: '#e5e7eb',
   blue: '#3b82f6',
+  pin: '#7c3aed',
 };
 
 const RADIUS_KM = 1;
+const RADIUS_M = RADIUS_KM * 1000;
+const NEARBY_LIMIT = 1000;
+const MIN_REFRESH_DISTANCE_M = 50;
+const LIVE_UPDATE_DISTANCE_M = 25;
+const LIVE_UPDATE_INTERVAL_MS = 10000;
+const NEARBY_REFRESH_DEBOUNCE_MS = 1200;
 
 const STATUS_FILTERS = [
   { label: 'All', value: '' },
@@ -49,6 +57,12 @@ const copyToClipboard = async (text) => {
   }
 };
 
+const getMarkerColor = (vacantLines) => {
+  if (vacantLines === 0) return COLORS.red;
+  if (vacantLines <= 8) return COLORS.yellow;
+  return COLORS.green;
+};
+
 const NapMapScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [nearbyNaps, setNearbyNaps] = useState([]);
@@ -68,12 +82,19 @@ const NapMapScreen = ({ navigation }) => {
   const [routeLoading, setRouteLoading] = useState(false);
   const [dataDate, setDataDate] = useState(null);
   const [dataDateError, setDataDateError] = useState(false);
+  const [locating, setLocating] = useState(false);
   const mapRef = useRef(null);
   const searchSeqRef = useRef(0);
-
-  useEffect(() => {
-    getCurrentLocation();
-  }, []);
+  const nearbySeqRef = useRef(0);
+  const locationRef = useRef(null);
+  const droppedPinRef = useRef(null);
+  const isSearchingRef = useRef(false);
+  const lastFetchedCenterRef = useRef(null);
+  const fetchNearbyNapsRef = useRef(null);
+  const lastRouteRef = useRef({ napId: null, origin: null });
+  const myLocationBusyRef = useRef(false);
+  const watcherRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,45 +128,141 @@ const NapMapScreen = ({ navigation }) => {
     };
   }, []);
 
-  const getCurrentLocation = async () => {
+  const fetchNearbyNaps = useCallback(async (lat, lng, opts = {}) => {
+    const { silent = false } = opts;
+    const seq = ++nearbySeqRef.current;
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to show nearby NAPs');
-        setLoading(false);
-        return;
-      }
-
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const userLoc = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      };
-      setLocation(userLoc);
-      await fetchNearbyNaps(userLoc.latitude, userLoc.longitude);
-    } catch (error) {
-      console.error('Location error:', error);
-      Alert.alert('Error', 'Failed to get location');
-      setLoading(false);
-    }
-  };
-
-  const fetchNearbyNaps = async (lat, lng) => {
-    try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await napsAPI.getNearest({ 
         lat, 
         lng, 
         radius: RADIUS_KM,
-        limit: 500 
+        limit: NEARBY_LIMIT 
       });
+      if (seq !== nearbySeqRef.current) return;
       setNearbyNaps(response.naps || []);
     } catch (error) {
-      console.error('Error fetching nearby NAPs:', error);
+      if (seq === nearbySeqRef.current) {
+        console.error('Error fetching nearby NAPs:', error);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchNearbyNapsRef.current = fetchNearbyNaps;
+  }, [fetchNearbyNaps]);
+
+  const debouncedFetchNearby = useMemo(
+    () =>
+      debounce((lat, lng) => {
+        if (!isMountedRef.current) return;
+        lastFetchedCenterRef.current = { latitude: lat, longitude: lng };
+        fetchNearbyNapsRef.current?.(lat, lng, { silent: true });
+      }, NEARBY_REFRESH_DEBOUNCE_MS),
+    []
+  );
+
+  const handleLivePosition = useCallback(
+    (loc) => {
+      const coordinate = parseCoordinate(loc?.coords?.latitude, loc?.coords?.longitude);
+      if (!coordinate) return;
+      locationRef.current = coordinate;
+      setLocation(coordinate);
+
+      if (droppedPinRef.current || isSearchingRef.current) return;
+
+      const lastCenter = lastFetchedCenterRef.current;
+      if (!lastCenter || distanceMeters(lastCenter, coordinate) >= MIN_REFRESH_DISTANCE_M) {
+        debouncedFetchNearby(coordinate.latitude, coordinate.longitude);
+      }
+    },
+    [debouncedFetchNearby]
+  );
+
+  useEffect(() => {
+    isSearchingRef.current = isSearching;
+  }, [isSearching]);
+
+  useEffect(() => {
+    droppedPinRef.current = droppedPin;
+  }, [droppedPin]);
+
+  const startLiveWatcher = useCallback(async () => {
+    if (watcherRef.current) return;
+    const permission = await Location.getForegroundPermissionsAsync();
+    if (!permission.granted) return;
+    try {
+      const subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: LIVE_UPDATE_DISTANCE_M,
+          timeInterval: LIVE_UPDATE_INTERVAL_MS,
+        },
+        handleLivePosition
+      );
+      if (!isMountedRef.current) {
+        subscription?.remove?.();
+        return;
+      }
+      watcherRef.current = subscription;
+    } catch (error) {
+      console.error('Watch error:', error);
+    }
+  }, [handleLivePosition]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      watcherRef.current?.remove?.();
+      watcherRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const initialize = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Location permission is required to show nearby NAPs');
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          if (cancelled) return;
+          const coordinate = parseCoordinate(loc.coords.latitude, loc.coords.longitude);
+          if (coordinate) {
+            locationRef.current = coordinate;
+            lastFetchedCenterRef.current = coordinate;
+            setLocation(coordinate);
+            await fetchNearbyNaps(coordinate.latitude, coordinate.longitude);
+          }
+        } catch (error) {
+          console.error('Location error:', error);
+          if (!cancelled) setLoading(false);
+        }
+
+        if (cancelled) return;
+        await startLiveWatcher();
+      } catch (error) {
+        console.error('Location setup error:', error);
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    initialize();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchNearbyNaps, startLiveWatcher]);
 
   const debouncedSearch = useCallback(
     debounce(async (query) => {
@@ -212,12 +329,6 @@ const NapMapScreen = ({ navigation }) => {
     setShowList(false);
   };
 
-  const refreshNearby = async () => {
-    if (location) {
-      await fetchNearbyNaps(location.latitude, location.longitude);
-    }
-  };
-
   useEffect(() => {
     const dest = selectedNap ? parseCoordinate(selectedNap.dp_nap_lat, selectedNap.dp_nap_long) : null;
     const origin = droppedPin || location;
@@ -225,8 +336,16 @@ const NapMapScreen = ({ navigation }) => {
       setRoutePoints([]);
       setRouteDistanceKm(null);
       setRouteLoading(false);
+      lastRouteRef.current = { napId: null, origin: null };
       return;
     }
+
+    const napId = selectedNap?.id ?? null;
+    const previous = lastRouteRef.current;
+    const sameTarget = previous.napId === napId;
+    const originMoved = !previous.origin || distanceMeters(previous.origin, origin) >= MIN_REFRESH_DISTANCE_M;
+    if (sameTarget && !originMoved) return;
+    lastRouteRef.current = { napId, origin };
 
     let cancelled = false;
     setRouteLoading(true);
@@ -251,29 +370,100 @@ const NapMapScreen = ({ navigation }) => {
   }, [selectedNap, droppedPin, location]);
 
   const handleMapLongPress = useCallback(async (e) => {
-    const { latitude, longitude } = e.nativeEvent.coordinate;
-    const pin = { latitude, longitude };
-    setDroppedPin(pin);
+    const coordinate = parseCoordinate(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude);
+    if (!coordinate) return;
+    droppedPinRef.current = coordinate;
+    setDroppedPin(coordinate);
     setSelectedNap(null);
-    await fetchNearbyNaps(latitude, longitude);
-    mapRef.current?.animateToRegion({ ...pin, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 400);
+    lastFetchedCenterRef.current = coordinate;
+    await fetchNearbyNaps(coordinate.latitude, coordinate.longitude, { silent: true });
+    mapRef.current?.animateToRegion({ ...coordinate, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 400);
   }, [fetchNearbyNaps]);
 
-  const clearPin = async () => {
+  const handlePinDrag = useCallback((e) => {
+    const coordinate = parseCoordinate(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude);
+    if (!coordinate) return;
+    droppedPinRef.current = coordinate;
+    setDroppedPin(coordinate);
+  }, []);
+
+  const handlePinDragEnd = useCallback(async (e) => {
+    const coordinate = parseCoordinate(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude);
+    if (!coordinate) return;
+    droppedPinRef.current = coordinate;
+    setDroppedPin(coordinate);
+    lastFetchedCenterRef.current = coordinate;
+    await fetchNearbyNaps(coordinate.latitude, coordinate.longitude, { silent: true });
+  }, [fetchNearbyNaps]);
+
+  const clearPin = useCallback(async () => {
+    droppedPinRef.current = null;
     setDroppedPin(null);
-    if (location) {
-      await fetchNearbyNaps(location.latitude, location.longitude);
-      mapRef.current?.animateToRegion({ ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 400);
+    const current = locationRef.current || location;
+    if (current) {
+      lastFetchedCenterRef.current = current;
+      await fetchNearbyNaps(current.latitude, current.longitude, { silent: true });
+      mapRef.current?.animateToRegion({ ...current, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 400);
     }
-  };
+  }, [fetchNearbyNaps, location]);
 
-  const getMarkerColor = (vacantLines) => {
-    if (vacantLines === 0) return COLORS.red;
-    if (vacantLines <= 8) return COLORS.yellow;
-    return COLORS.green;
-  };
+  const handleMyLocation = useCallback(async () => {
+    if (myLocationBusyRef.current) return;
+    myLocationBusyRef.current = true;
+    setLocating(true);
+    try {
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        permission = await Location.requestForegroundPermissionsAsync();
+      }
+      if (permission.status !== 'granted') {
+        Alert.alert(
+          'Location Permission Needed',
+          'Please allow location access so the map can center on your current position.'
+        );
+        return;
+      }
 
-  const renderNapMarker = (nap) => {
+      let coordinate = null;
+      try {
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        coordinate = parseCoordinate(position?.coords?.latitude, position?.coords?.longitude);
+      } catch (error) {
+        console.error('My location error:', error);
+      }
+
+      if (!coordinate) {
+        coordinate = locationRef.current;
+      }
+
+      if (!coordinate) {
+        Alert.alert(
+          'Location Unavailable',
+          "We couldn't determine your current location. Please make sure GPS is enabled and try again."
+        );
+        return;
+      }
+
+      droppedPinRef.current = null;
+      setDroppedPin(null);
+      locationRef.current = coordinate;
+      lastFetchedCenterRef.current = coordinate;
+      setLocation(coordinate);
+
+      mapRef.current?.animateToRegion(
+        { ...coordinate, latitudeDelta: 0.01, longitudeDelta: 0.01 },
+        400
+      );
+
+      await fetchNearbyNaps(coordinate.latitude, coordinate.longitude, { silent: true });
+      await startLiveWatcher();
+    } finally {
+      myLocationBusyRef.current = false;
+      setLocating(false);
+    }
+  }, [fetchNearbyNaps, startLiveWatcher]);
+
+  const renderNapMarker = useCallback((nap) => {
     const c = parseCoordinate(nap.dp_nap_lat, nap.dp_nap_long);
     if (!c) return null;
     const color = getMarkerColor(nap.vacant_lines);
@@ -306,7 +496,7 @@ const NapMapScreen = ({ navigation }) => {
         </Callout>
       </Marker>
     );
-  };
+  }, [selectNap]);
 
   const renderNapListItem = ({ item: nap }) => {
     const color = getMarkerColor(nap.vacant_lines);
@@ -341,7 +531,13 @@ const NapMapScreen = ({ navigation }) => {
         : null
     : null;
 
+  const activeCoordinate = droppedPin || location;
   const displayNaps = isSearching ? searchResults : nearbyNaps;
+  const nearbyCapReached = !isSearching && nearbyNaps.length >= NEARBY_LIMIT;
+  const napMarkers = useMemo(
+    () => displayNaps.map(renderNapMarker),
+    [displayNaps, renderNapMarker]
+  );
   const initialRegion = location 
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { latitude: 10.3157, longitude: 123.8854, latitudeDelta: 0.5, longitudeDelta: 0.5 };
@@ -375,8 +571,8 @@ const NapMapScreen = ({ navigation }) => {
             {isSearching
               ? `${searchResults.length} search results`
               : droppedPin
-                ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km of pin`
-                : `${nearbyNaps.length} NAPs within ${RADIUS_KM}km`
+                ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km of pin${nearbyCapReached ? ` (limit ${NEARBY_LIMIT})` : ''}`
+                : `${nearbyNaps.length} NAPs within ${RADIUS_KM}km${nearbyCapReached ? ` (limit ${NEARBY_LIMIT})` : ''}`
             }
           </Text>
           <Text style={[styles.dataDateText, dataDateError && !dataDate && styles.dataDateError]}>
@@ -431,20 +627,26 @@ const NapMapScreen = ({ navigation }) => {
         followsUserLocation={false}
         onLongPress={handleMapLongPress}
       >
-        {/* 1km radius circle */}
-        {(droppedPin || location) && !isSearching && (
+        {/* 1km radius circle follows the active search coordinate */}
+        {activeCoordinate && !isSearching && (
           <Circle
-            center={droppedPin || location}
-            radius={RADIUS_KM * 1000}
+            center={activeCoordinate}
+            radius={RADIUS_M}
             fillColor="rgba(200, 149, 108, 0.08)"
             strokeColor={COLORS.primary}
             strokeWidth={1}
           />
         )}
 
-        {/* Dropped pin */}
+        {/* Dropped pin (manual search location) */}
         {droppedPin && (
-          <Marker coordinate={droppedPin} pinColor={COLORS.blue} />
+          <Marker
+            coordinate={droppedPin}
+            pinColor={COLORS.pin}
+            draggable
+            onDrag={handlePinDrag}
+            onDragEnd={handlePinDragEnd}
+          />
         )}
 
         {/* Active route along roads from current location / pin to selected NAP */}
@@ -457,8 +659,31 @@ const NapMapScreen = ({ navigation }) => {
         )}
 
         {/* NAP markers */}
-        {displayNaps.map(renderNapMarker)}
+        {napMarkers}
       </MapView>
+
+      {/* My Location button */}
+      {!showList && !detailsExpanded && (
+        <TouchableOpacity
+          style={[styles.myLocationButton, locating && styles.myLocationButtonActive]}
+          onPress={handleMyLocation}
+          activeOpacity={0.85}
+          disabled={locating}
+          accessibilityRole="button"
+          accessibilityLabel="My location"
+          accessibilityHint="Clears any dropped pin and centers the map on your current location"
+        >
+          {locating ? (
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          ) : (
+            <Ionicons
+              name={droppedPin ? 'locate-outline' : 'locate'}
+              size={22}
+              color={COLORS.primary}
+            />
+          )}
+        </TouchableOpacity>
+      )}
 
       {/* List View */}
       {showList && (
@@ -749,6 +974,26 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  myLocationButton: {
+    position: 'absolute',
+    right: 14,
+    bottom: 96,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  myLocationButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
   },
   listContainer: {
     position: 'absolute',

@@ -10,6 +10,19 @@ export const debounce = (func, wait) => {
   };
 };
 
+export const distanceMeters = (a, b) => {
+  if (!a || !b) return Infinity;
+  const R = 6371000;
+  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const lat1 = (a.latitude * Math.PI) / 180;
+  const lat2 = (b.latitude * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, h)));
+};
+
 export const parseCoordinate = (lat, lng) => {
   const latitude = parseFloat(lat);
   const longitude = parseFloat(lng);

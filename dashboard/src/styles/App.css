@@ -248,6 +248,17 @@ body {
 .badge-gray { background: var(--bg); color: var(--text-secondary); }
 .badge-gold { background: #fef3c7; color: #92400e; display: inline-flex; align-items: center; gap: 4px; }
 
+/* ========== Dashboard motion polish (anime.js) ========== */
+.stat-ring { flex-shrink: 0; display: block; }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 56px 24px; text-align: center;
+}
+.empty-clock { flex-shrink: 0; }
+.empty-title { font-weight: 600; font-size: 14px; color: var(--text-secondary); margin: 12px 0 0; }
+.empty-hint { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; max-width: 300px; line-height: 1.5; }
+
 /* ========== Activity Feed ========== */
 .activity-feed { max-height: 400px; overflow-y: auto; }
 
@@ -375,23 +386,120 @@ body {
 .login-header p { color: var(--text-secondary); font-size: 14px; font-weight: 500; }
 .login-subtitle { display: block; color: var(--text-muted); font-size: 12.5px; margin-top: 6px; }
 
-/* ========== Map ========== */
-.map-card { height: calc(100vh - 200px); }
-.map-stats {
-  padding: 12px 20px; background: var(--bg); border-bottom: 1px solid var(--border);
-  font-size: 14px; color: var(--text-secondary);
+/* ========== Maps — Google-Maps-style shell ========== */
+/* Full-bleed: when a page renders the map shell, drop the content padding */
+.main-content:has(.gmap-shell) { padding: 0; }
+
+.gmap-shell { position: relative; height: 100vh; width: 100%; overflow: hidden; }
+.gmap-loading { display: flex; align-items: center; justify-content: center; height: 100vh; color: var(--text-muted); }
+
+.gmap-canvas {
+  width: 100%; height: 100%;
+  background: #e8eaed; /* Google's empty-tile tone */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
-.map-popup { text-align: center; }
-.popup-photo { width: 140px; border-radius: var(--radius-sm); margin-bottom: 8px; }
-.popup-photo-placeholder {
-  width: 140px; height: 100px; border-radius: var(--radius-sm); margin-bottom: 8px;
-  background: #f3f4f6; border: 1px dashed #d1d5db;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  color: #9ca3af; font-size: 12px;
+
+/* Floating white cards, buttons & info sheet — Google Maps HUD */
+.gmap-card {
+  position: absolute; top: 16px; left: 16px; z-index: 1200;
+  background: #fff; border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.2);
+  padding: 14px 16px; width: 320px; max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 140px); overflow-y: auto;
 }
-.popup-status { font-weight: 600; margin: 4px 0; }
-.popup-status.clock_in { color: var(--success); }
-.popup-status.clock_out { color: var(--warning); }
+.gmap-card-title { font-weight: 600; font-size: 15px; }
+.gmap-card .gmap-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.gmap-date {
+  width: 100%; margin-top: 10px; padding: 9px 12px;
+  border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; font-family: inherit; background: var(--bg);
+}
+.gmap-date:focus { outline: none; border-color: var(--accent); background: #fff; }
+.gmap-card-actions { display: flex; gap: 8px; margin-top: 10px; }
+.gmap-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--accent); color: #fff; border: none;
+  padding: 7px 12px; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.gmap-pill:hover { background: var(--primary-light); }
+.gmap-warning { margin-top: 8px; font-size: 12px; color: #dc2626; }
+.gmap-trail-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
+.gmap-trail-filters input[type='time'] { padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.gmap-check { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.gmap-muted { color: var(--text-muted); font-size: 12px; }
+.gmap-nosignal { margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.gmap-fab-group {
+  position: absolute; right: 16px; bottom: 40px; z-index: 1200;
+  display: flex; flex-direction: column;
+  background: #fff; border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3); width: 40px;
+}
+.gmap-fab {
+  width: 40px; height: 40px; border: none; background: #fff;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: #666; border-radius: 0;
+}
+.gmap-fab:hover { color: var(--text-primary); }
+.gmap-fab + .gmap-fab { border-top: 1px solid #e8eaed; }
+
+.gmap-legend {
+  position: absolute; left: 16px; bottom: 28px; z-index: 1200;
+  background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  padding: 8px 14px; font-size: 12px; color: var(--text-secondary);
+  display: flex; flex-wrap: wrap; gap: 12px; max-width: calc(100vw - 80px);
+}
+.gmap-dot {
+  width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  margin-right: 5px; vertical-align: middle; border: 1.5px solid rgba(255,255,255,.9);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+}
+.gmap-legend span { display: inline-flex; align-items: center; }
+
+/* Bottom info card (opened by clicking a pin) */
+.gmap-sheet {
+  position: absolute; left: 16px; bottom: 64px; z-index: 1300;
+  width: 320px; background: #fff; border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.28); overflow: hidden;
+  animation: gmapSheetUp 0.18s ease-out;
+}
+@keyframes gmapSheetUp {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.gmap-sheet-close {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  width: 28px; height: 28px; border: none; border-radius: 50%;
+  background: rgba(0,0,0,.45); color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.gmap-sheet-photo { width: 100%; height: 150px; object-fit: cover; display: block; }
+.photo-placeholder.gmap-sheet-photo {
+  width: 100%; height: 150px; border-radius: 0; border: none; border-bottom: 1px solid var(--border);
+  font-size: 12px; gap: 4px;
+}
+.gmap-sheet-body { padding: 12px 14px 14px; position: relative; }
+.gmap-sheet-body h4 { font-size: 15px; }
+.gmap-sheet-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; color: var(--text-secondary); flex-wrap: wrap; }
+.gmap-sheet-btn {
+  margin-top: 10px; width: 100%; padding: 9px 0; border: none; border-radius: 8px;
+  background: var(--accent); color: #fff; font-weight: 600; font-size: 13px; cursor: pointer;
+}
+.gmap-sheet-btn:hover { background: var(--primary-light); }
+.gmap-sheet-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Floating playback bar */
+.gmap-bottom-panel {
+  position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%);
+  z-index: 1200; background: #fff; border-radius: 22px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  padding: 8px 16px; display: flex; align-items: center; gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .gmap-card { left: 12px; top: 12px; width: calc(100vw - 64px); }
+  .gmap-sheet { width: calc(100vw - 32px); left: 16px; }
+}
 
 /* ========== Utils ========== */
 .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--text-muted); }

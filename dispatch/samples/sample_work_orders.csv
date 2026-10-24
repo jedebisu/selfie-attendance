@@ -1,0 +1,8 @@
+orderActionId,orderId,facility,customerFirstName,customerLastName,territory,appointment,technicianFirstName,technicianLastName,contractor,status,area,latitude,longitude,address
+WO-100001,ORDER-778899,CEB_018_L009_N04A,Juan,Dela Cruz,CEBU-NORTH,2026-10-12,Mark,Reyes,GLobe Telecom,In Progress,Central,10.31740974,123.90433569,123 Mabini St
+WO-100002,ORDER-778900,CEB_004_L071_N03A,Maria,Santos,CEBU-NORTH,2026-10-12,Ana,Cruz,JBC Communications,New,Central,10.36000000,124.00000000,45 Rizal Ave
+WO-100003,ORDER-778901,NAP_DOES_NOT_EXIST,Pedro,Reyes,CEBU-SOUTH,,,,,For Dispatch,Central,10.31000000,123.89000000,88 Colon St
+WO-100004,ORDER-778902,,Luzviminda,Go,CEBU-SOUTH,2026-10-13,Rico,Lim,Global Fiber,Assigned,Central,10.31570000,123.88540000,2 Osmena Blvd
+WO-100001,ORDER-778899,CEB_018_L009_N04A,Juan,Dela Cruz,CEBU-NORTH,2026-10-12,Mark,Reyes,GLobe Telecom,In Progress,Central,10.31740974,123.90433569,Duplicate row in file
+WO-100005,ORDER-778903,MDE_002_L001_N01A,Andres,Bonifacio,CEBU-NORTH,2026-10-11,Mark,Reyes,FiberTech Ph,Completed,North,999.00000000,123.92139364,9 Del Pilar St
+WO-100006,ORDER-778904,,Josefa,Llanes,CEBU-SOUTH,2026-10-14,,,,,New,South,10.30000000,123.90000000,17 Jones Ave

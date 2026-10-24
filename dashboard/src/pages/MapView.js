@@ -1,42 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import { attendanceAPI } from '../services/api';
 import AttendancePhoto from '../components/AttendancePhoto';
+import { MapBridge, FitAll, MAP_TILES, pinIcon } from '../components/GMapKit';
 import { format } from 'date-fns';
-import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { X, Plus, Minus, Crosshair } from 'lucide-react';
 
-// Fix for default marker icon
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-// Custom marker icons
-const clockInIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-const clockOutIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
+const clockInPin = pinIcon('#22c55e');
+const clockOutPin = pinIcon('#f97316');
 
 const MapView = () => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selected, setSelected] = useState(null);
+  const [focus, setFocus] = useState(null);
+  const [fitToken, setFitToken] = useState(0);
+  const mapRef = useRef(null);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -45,10 +26,12 @@ const MapView = () => {
       const data = res.data || {};
       const recordsWithLocation = (data.records || []).filter(r => r.latitude && r.longitude);
       setRecords(recordsWithLocation);
+      setSelected(prev => (prev && recordsWithLocation.some(r => r.id === prev.id) ? prev : null));
     } catch (error) {
       console.error('Error fetching records:', error);
     } finally {
       setLoading(false);
+      setFitToken(t => t + 1);
     }
   }, [date]);
 
@@ -56,78 +39,97 @@ const MapView = () => {
     fetchRecords();
   }, [fetchRecords]);
 
-  // Calculate center of map
+  const points = useMemo(
+    () => records.map(r => [parseFloat(r.latitude), parseFloat(r.longitude)]),
+    [records]
+  );
+
   const getCenter = () => {
-    if (records.length === 0) {
-      return [14.5995, 120.9842]; // Default: Manila
-    }
-    
-    const lats = records.map(r => parseFloat(r.latitude));
-    const lngs = records.map(r => parseFloat(r.longitude));
-    
+    if (points.length === 0) return [14.5995, 120.9842]; // Default: Manila
+    const lats = points.map(p => p[0]);
+    const lngs = points.map(p => p[1]);
     return [
       (Math.min(...lats) + Math.max(...lats)) / 2,
-      (Math.min(...lngs) + Math.max(...lngs)) / 2
+      (Math.min(...lngs) + Math.max(...lngs)) / 2,
     ];
   };
 
-  return (
-    <div className="map-page">
-      <div className="page-header">
-        <div>
-          <h1>Map View</h1>
-          <p className="subtitle">Attendance locations</p>
-        </div>
-        <div className="filter-group">
-          <label>Date:</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </div>
-      </div>
+  const openRecord = (record) => {
+    setSelected(record);
+    setFocus({ lat: parseFloat(record.latitude), lng: parseFloat(record.longitude) });
+  };
 
-      <div className="card map-card">
-        {loading ? (
-          <div className="loading">Loading map...</div>
-        ) : (
-          <>
-            <div className="map-stats">
-              <span>{records.length} attendance records with location</span>
-            </div>
-            <MapContainer
-              center={getCenter()}
-              zoom={13}
-              style={{ height: 'calc(100vh - 280px)', width: '100%' }}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  const closeSheet = () => {
+    setSelected(null);
+    setFocus(null);
+  };
+
+  return (
+    <div className="gmap-shell">
+      {loading ? (
+        <div className="gmap-loading">Loading map…</div>
+      ) : (
+        <>
+          <MapContainer
+            center={getCenter()}
+            zoom={13}
+            zoomControl={false}
+            className="gmap-canvas"
+          >
+            <TileLayer url={MAP_TILES.url} attribution={MAP_TILES.attribution} />
+            <MapBridge mapRef={mapRef} focus={focus} />
+            <FitAll points={points} trigger={fitToken} />
+
+            {records.map((record) => (
+              <Marker
+                key={record.id}
+                position={[parseFloat(record.latitude), parseFloat(record.longitude)]}
+                icon={record.status === 'clock_in' ? clockInPin : clockOutPin}
+                eventHandlers={{ click: () => openRecord(record) }}
               />
-              {records.map((record) => (
-                <Marker
-                  key={record.id}
-                  position={[parseFloat(record.latitude), parseFloat(record.longitude)]}
-                  icon={record.status === 'clock_in' ? clockInIcon : clockOutIcon}
-                >
-                  <Popup>
-                    <div className="map-popup">
-                      <AttendancePhoto className="popup-photo" url={record.photo_url} />
-                      <h4>{record.user_name}</h4>
-                      <p><strong>{record.employee_id}</strong></p>
-                      <p className={`popup-status ${record.status}`}>
-                        {record.status === 'clock_in' ? 'Clock In' : 'Clock Out'}
-                      </p>
-                      <p>{format(new Date(record.timestamp), 'hh:mm a')}</p>
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
-            </MapContainer>
-          </>
-        )}
-      </div>
+            ))}
+          </MapContainer>
+
+          <div className="gmap-card gmap-top">
+            <div className="gmap-card-title">Map View</div>
+            <div className="gmap-sub">{records.length} attendance record{records.length === 1 ? '' : 's'} with location</div>
+            <input
+              type="date"
+              className="gmap-date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+
+          <div className="gmap-fab-group">
+            <button className="gmap-fab" title="Zoom in" onClick={() => mapRef.current?.zoomIn()}><Plus size={18} /></button>
+            <button className="gmap-fab" title="Zoom out" onClick={() => mapRef.current?.zoomOut()}><Minus size={18} /></button>
+            <button className="gmap-fab" title="Fit all pins" onClick={() => setFitToken(t => t + 1)}><Crosshair size={16} /></button>
+          </div>
+
+          <div className="gmap-legend">
+            <span><span className="gmap-dot" style={{ background: '#22c55e' }} />Clock In</span>
+            <span><span className="gmap-dot" style={{ background: '#f97316' }} />Clock Out</span>
+          </div>
+
+          {selected && (
+            <div className="gmap-sheet">
+              <button className="gmap-sheet-close" onClick={closeSheet} aria-label="Close"><X size={16} /></button>
+              <AttendancePhoto url={selected.photo_url} className="gmap-sheet-photo" alt={`${selected.user_name} attendance`} />
+              <div className="gmap-sheet-body">
+                <h4>{selected.user_name}</h4>
+                <p className="gmap-muted">{selected.employee_id}</p>
+                <div className="gmap-sheet-row">
+                  <span className={`badge ${selected.status === 'clock_in' ? 'badge-green' : 'badge-orange'}`}>
+                    {selected.status === 'clock_in' ? 'Clock In' : 'Clock Out'}
+                  </span>
+                  <span>{format(new Date(selected.timestamp), 'hh:mm a')}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };
