@@ -6,8 +6,8 @@ const csv = require('csv-parse/sync');
 
 const CSV_PATH = '/Users/yanggee/Downloads/NAP_DEPLOYMENT_FORMAT.csv';
 
-// Only include Cebu and Bohol
-const ALLOWED_PROVINCES = ['CEBU', 'BOHOL'];
+// Only include Central Visayas (Cebu, Bohol, Negros Oriental)
+const ALLOWED_PROVINCES = ['CEBU', 'BOHOL', 'NEGROS ORIENTAL'];
 
 const seedNaps = async () => {
   const client = await pool.connect();
@@ -108,7 +108,7 @@ const seedNaps = async () => {
 
     await client.query('COMMIT');
     console.log(`\nSeed completed:`);
-    console.log(`  Inserted: ${inserted} (Cebu & Bohol only)`);
+    console.log(`  Inserted: ${inserted} (Central Visayas only)`);
     console.log(`  Skipped (no coords): ${skipped}`);
     console.log(`  Skipped (other provinces): ${skippedProvince}`);
 
