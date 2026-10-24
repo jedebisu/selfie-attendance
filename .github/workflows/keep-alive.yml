@@ -12,3 +12,7 @@ jobs:
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 https://selfie-api-sqgh.onrender.com/api/health || true)
           echo "Health check responded with: $code"
+      - name: Prime NAP snapshot (keeps fast path warm + CDN-fresh)
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -m 120 https://selfie-api-sqgh.onrender.com/api/nap-snapshot.json || true)
+          echo "Snapshot responded with: $code"

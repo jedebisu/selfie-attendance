@@ -47,6 +47,46 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // building it in-memory on first request and serving that.
 const NAP_SNAPSHOT = path.join(__dirname, '../public/nap-snapshot.json');
 let memorySnapshot = null; // { json: string, etag: string } fallback
+
+async function buildMemorySnapshot() {
+  const { VISAYAS_WHERE, COORD_SAFE, LOW_AVAILABILITY_THRESHOLD, napReportDate } = require('./routes/napcheck');
+  const rows = await pool.query(
+    `SELECT id, nap_id, dp_nap_lat, dp_nap_long, vacant_lines
+     FROM naps WHERE ${VISAYAS_WHERE} AND ${COORD_SAFE}`
+  );
+  const s = await pool.query(
+    `SELECT
+       COUNT(*)::int AS total,
+       SUM(CASE WHEN vacant_lines IS NULL THEN 1 ELSE 0 END)::int AS unknown,
+       SUM(CASE WHEN vacant_lines = 0 THEN 1 ELSE 0 END)::int AS full,
+       SUM(CASE WHEN vacant_lines > 0 AND vacant_lines <= ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS warning,
+       SUM(CASE WHEN vacant_lines > ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS available
+     FROM naps WHERE ${VISAYAS_WHERE} AND ${COORD_SAFE}`
+  );
+  const sr = s.rows[0];
+  const json = JSON.stringify({
+    schema: 1,
+    generated_at: new Date().toISOString(),
+    report_date: napReportDate,
+    region: 'visayas',
+    total: Number(sr.total),
+    summary: { available: Number(sr.available), warning: Number(sr.warning), full: Number(sr.full), unknown: Number(sr.unknown) },
+    low_availability_threshold: LOW_AVAILABILITY_THRESHOLD,
+    cols: 'min',
+    rows: rows.rows.map((r) => [r.id, r.nap_id, r.dp_nap_lat, r.dp_nap_long, r.vacant_lines]),
+  });
+  memorySnapshot = json;
+  console.log('[nap-snapshot] built in-memory:', rows.rows.length, 'rows,', Buffer.byteLength(json), 'bytes');
+  return json;
+}
+
+// Warm the snapshot at boot: the first visitor after a cold start should
+// never pay the ~20-30 s build. Fire-and-forget; the route lazy-builds on
+// demand if this hasn't finished yet.
+setImmediate(() => {
+  buildMemorySnapshot().catch((e) => console.error('[nap-snapshot] boot warm-up failed (route will retry on demand):', e.message));
+});
+
 // Mounted at /api/nap-snapshot.json to match the frontend's API_BASE prefix.
 app.get('/api/nap-snapshot.json', async (req, res) => {
   try {
@@ -62,36 +102,7 @@ app.get('/api/nap-snapshot.json', async (req, res) => {
     // 2) In-memory fallback: build once from the DB, serve cached. The
     //    frontend cross-checks report_date against the live summary, so
     //    staleness is self-correcting even if this is old.
-    if (!memorySnapshot) {
-      const { VISAYAS_WHERE, COORD_SAFE, LOW_AVAILABILITY_THRESHOLD, napReportDate } = require('./routes/napcheck');
-      const rows = await pool.query(
-        `SELECT id, nap_id, dp_nap_lat, dp_nap_long, vacant_lines
-         FROM naps WHERE ${VISAYAS_WHERE} AND ${COORD_SAFE}`
-      );
-      const s = await pool.query(
-        `SELECT
-           COUNT(*)::int AS total,
-           SUM(CASE WHEN vacant_lines IS NULL THEN 1 ELSE 0 END)::int AS unknown,
-           SUM(CASE WHEN vacant_lines = 0 THEN 1 ELSE 0 END)::int AS full,
-           SUM(CASE WHEN vacant_lines > 0 AND vacant_lines <= ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS warning,
-           SUM(CASE WHEN vacant_lines > ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS available
-         FROM naps WHERE ${VISAYAS_WHERE} AND ${COORD_SAFE}`
-      );
-      const sr = s.rows[0];
-      memorySnapshot = JSON.stringify({
-        schema: 1,
-        generated_at: new Date().toISOString(),
-        report_date: napReportDate,
-        region: 'visayas',
-        total: Number(sr.total),
-        summary: { available: Number(sr.available), warning: Number(sr.warning), full: Number(sr.full), unknown: Number(sr.unknown) },
-        low_availability_threshold: LOW_AVAILABILITY_THRESHOLD,
-        cols: 'min',
-        rows: rows.rows.map((r) => [r.id, r.nap_id, r.dp_nap_lat, r.dp_nap_long, r.vacant_lines]),
-      });
-      console.log('[nap-snapshot] built in-memory fallback:', rows.rows.length, 'rows');
-    }
-    const body = memorySnapshot;
+    const body = memorySnapshot || await buildMemorySnapshot();
     res.set('Content-Type', 'application/json');
     res.set('Content-Length', Buffer.byteLength(body));
     res.set('Cache-Control', 'public, max-age=3600, s-maxage=3600');
