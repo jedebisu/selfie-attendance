@@ -43,7 +43,7 @@ async function main() {
       id, nap_id, dp_nap_lat, dp_nap_long, vacant_lines,
       (SELECT 1) AS _cnt
     FROM naps
-    WHERE ${REGION_WHERE} AND ${COORD_SAFE}
+    WHERE ${COORD_SAFE}
   `);
 
   // Single-pass summary (mirrors the optimized /map summary).
@@ -55,7 +55,7 @@ async function main() {
       SUM(CASE WHEN vacant_lines > 0 AND vacant_lines <= ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS warning,
       SUM(CASE WHEN vacant_lines > ${LOW_AVAILABILITY_THRESHOLD} THEN 1 ELSE 0 END)::int AS available
     FROM naps
-    WHERE ${REGION_WHERE} AND ${COORD_SAFE}
+    WHERE ${COORD_SAFE}
   `);
 
   const rows = singleQuery.rows.map((r) => [r.id, r.nap_id, r.dp_nap_lat, r.dp_nap_long, r.vacant_lines]);
