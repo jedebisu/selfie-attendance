@@ -94,19 +94,10 @@ const VISAYAS_COORD_SQL = `(
 
 const VISAYAS_WHERE = `((${VISAYAS_CLASSIFICATION_SQL}) OR (${VISAYAS_COORD_SQL}))`.replace(/\s+/g, ' ');
 
-// ---------------------------------------------------------------------------
-// Region scope - narrowed to Central Visayas (CEBU, BOHOL, NEGROS ORIENTAL)
-// per owner request (2026-10-24) to reduce pin load. Pins whose
-// province_name doesn't start with one of these three are excluded, even if
-// they fall inside the broader Visayas bounding box / classification.
-// Revert to `VISAYAS_WHERE` to restore the full Visayas set.
-// ---------------------------------------------------------------------------
-const ALLOWED_PROVINCES_SQL = `(
-  UPPER(COALESCE(province_name, '')) LIKE 'CEBU%'
-  OR UPPER(COALESCE(province_name, '')) LIKE 'BOHOL%'
-  OR UPPER(COALESCE(province_name, '')) LIKE 'NEGROS ORIENTAL%'
-)`;
-const REGION_WHERE = `((${VISAYAS_WHERE}) AND ${ALLOWED_PROVINCES_SQL})`.replace(/\s+/g, ' ');
+// Full dataset scope (2026-10-28): the naps table serves every map/app that
+// consumes it, so no province narrowing. To re-narrow, AND an
+// ALLOWED_PROVINCES_SQL clause back onto VISAYAS_WHERE.
+const REGION_WHERE = VISAYAS_WHERE;
 
 // ---------------------------------------------------------------------------
 // Rate limiting — tiny in-memory sliding window, per IP. No new dependencies.
