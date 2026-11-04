@@ -2,7 +2,7 @@
   "expo": {
     "name": "EBISU T&A",
     "slug": "selfie-attendance",
-    "version": "1.4.3",
+    "version": "1.4.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -50,7 +50,7 @@
         "RECEIVE_BOOT_COMPLETED",
         "SCHEDULE_EXACT_ALARM"
       ],
-      "versionCode": 35
+      "versionCode": 39
     },
     "plugins": [],
     "extra": {
