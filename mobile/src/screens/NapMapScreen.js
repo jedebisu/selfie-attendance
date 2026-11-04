@@ -286,7 +286,13 @@ const NapMapScreen = ({ navigation }) => {
       setSearching(true);
       const response = await napsAPI.search({ q: query, limit: 100, status: statusFilter || undefined });
       if (seq !== searchSeqRef.current) return;
-      setSearchResults(response.naps || []);
+      const naps = response.naps || [];
+      setSearchResults(naps);
+      // Empty NAP search: one labeled "Nearby places" Photon fallback per
+      // settled search (never per keystroke; never while coordinate mode).
+      if (!naps.length && !coordinateSearchResult) {
+        runPlacesSearch(query);
+      }
     } catch (error) {
       console.error('Error searching NAPs:', error);
     } finally {
@@ -294,7 +300,7 @@ const NapMapScreen = ({ navigation }) => {
         setSearching(false);
       }
     }
-  }, [statusFilter]);
+  }, [statusFilter, coordinateSearchResult, runPlacesSearch]);
 
   // Enter-to-select: submit is the debounce bypass, but the still-pending
   // debounced callback must not repeat the identical query right after.
@@ -716,6 +722,36 @@ const NapMapScreen = ({ navigation }) => {
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { latitude: 10.3157, longitude: 123.8854, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
+  /** Shared Photon result rows (gray dots — external, never a NAP facility). */
+  const renderPlaceRows = () => (
+    <FlatList
+      data={placeResults}
+      keyExtractor={(item, index) => `place-${index}`}
+      keyboardShouldPersistTaps="handled"
+      renderItem={({ item }) => {
+        const p = item.properties || {};
+        const [lon, lat] = item.geometry.coordinates;
+        const kind = placeKind(item);
+        const sub = [p.district, p.locality, p.city, p.county, p.state]
+          .map((x) => String(x || '').trim()).filter(Boolean).join(', ');
+        return (
+          <TouchableOpacity
+            style={styles.placeResultItem}
+            onPress={() => flyToPlace(item)}
+          >
+            <View style={styles.placeResultDot} />
+            <View style={styles.placeResultContent}>
+              <Text style={styles.placeResultName}>{p.name || searchQuery}</Text>
+              <Text style={styles.placeResultSub}>{kind}{sub ? ` · ${sub}` : ''}</Text>
+              <Text style={styles.placeResultCoords}>{formatCoords(lat, lon)}</Text>
+            </View>
+          </TouchableOpacity>
+        );
+      }}
+      style={styles.placeResultsList}
+    />
+  );
+
   /** Places-scope panel: loading / error+Retry / no-results / results. */
   const renderPlacesPanel = () => {
     if (coordinateSearchResult) return null;
@@ -748,32 +784,42 @@ const NapMapScreen = ({ navigation }) => {
     if (placesPhase !== 'done' || placeResults.length === 0) return null;
     return (
       <View style={styles.placeResultsContainer}>
-          <FlatList
-            data={placeResults}
-            keyExtractor={(item, index) => `place-${index}`}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => {
-              const p = item.properties || {};
-              const [lon, lat] = item.geometry.coordinates;
-              const kind = placeKind(item);
-              const sub = [p.district, p.locality, p.city, p.county, p.state]
-                .map((x) => String(x || '').trim()).filter(Boolean).join(', ');
-              return (
-                <TouchableOpacity
-                  style={styles.placeResultItem}
-                  onPress={() => flyToPlace(item)}
-                >
-                  <View style={styles.placeResultDot} />
-                  <View style={styles.placeResultContent}>
-                    <Text style={styles.placeResultName}>{p.name || searchQuery}</Text>
-                    <Text style={styles.placeResultSub}>{kind}{sub ? ` · ${sub}` : ''}</Text>
-                    <Text style={styles.placeResultCoords}>{formatCoords(lat, lon)}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            }}
-            style={styles.placeResultsList}
-          />
+        {renderPlaceRows()}
+      </View>
+    );
+  };
+
+  /** NAP-scope empty state: "No NAPs found" + a clearly-labeled external
+   * nearby-places section driven by the shared Photon runner (placesPhase). */
+  const renderNapEmptyPanel = () => {
+    if (coordinateSearchResult) return null;
+    if (searchScope !== 'naps' || !isSearching || searching) return null;
+    if (searchQuery.trim().length < 2 || searchResults.length > 0) return null;
+    return (
+      <View style={styles.napEmptyPanel}>
+        <Text style={styles.napEmptyText}>No NAPs found for this search</Text>
+        {placesPhase === 'loading' && (
+          <Text style={styles.placesSectionLabel}>Searching nearby places…</Text>
+        )}
+        {placesPhase === 'error' && (
+          <View style={styles.napEmptySubWrap}>
+            <Text style={styles.napEmptySub}>Places search unavailable</Text>
+            <TouchableOpacity style={styles.placeRetryButton} onPress={retryPlacesSearch}>
+              <Text style={styles.placeRetryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {placesPhase === 'empty' && (
+          <Text style={styles.napEmptySub}>No nearby places found either</Text>
+        )}
+        {placesPhase === 'done' && placeResults.length > 0 && (
+          <View>
+            <Text style={styles.placesSectionLabel}>Nearby places — externally sourced</Text>
+            <View style={styles.placeResultsContainer}>
+              {renderPlaceRows()}
+            </View>
+          </View>
+        )}
       </View>
     );
   };
@@ -852,8 +898,11 @@ const NapMapScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Places panel (results / empty — loading + error states in Task 2) */}
+        {/* Places panel (results / empty / loading / error states) */}
         {renderPlacesPanel()}
+
+        {/* NAP-scope empty state + labeled external nearby-places fallback */}
+        {renderNapEmptyPanel()}
 
         {/* Status Bar */}
         <View style={styles.statusBar}>
@@ -1346,6 +1395,35 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 12,
+  },
+  napEmptyPanel: {
+    marginTop: 8,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  napEmptyText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.dark,
+  },
+  napEmptySub: {
+    fontSize: 13,
+    color: COLORS.gray,
+    marginTop: 4,
+  },
+  napEmptySubWrap: {
+    alignItems: 'flex-start',
+  },
+  placesSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.gray,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 10,
+    marginBottom: 2,
   },
   statusBar: {
     marginTop: 6,
