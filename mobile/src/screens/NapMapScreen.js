@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { 
-  View, Text, TextInput, TouchableOpacity, StyleSheet, 
-  ActivityIndicator, Alert, FlatList 
+import {
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  ActivityIndicator, Alert, FlatList, Keyboard
 } from 'react-native';
 import MapView, { Marker, Callout, Circle, Polyline } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -273,31 +273,73 @@ const NapMapScreen = ({ navigation }) => {
     };
   }, [fetchNearbyNaps, startLiveWatcher]);
 
-  const debouncedSearch = useCallback(
-    debounce(async (query) => {
-      if (query.trim().length < 2) {
-        searchSeqRef.current++;
-        setSearchResults([]);
-        setIsSearching(false);
-        return;
-      }
+  const performNapSearch = useCallback(async (query) => {
+    if (query.trim().length < 2) {
+      searchSeqRef.current++;
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
 
-      const seq = ++searchSeqRef.current;
-      try {
-        setSearching(true);
-        const response = await napsAPI.search({ q: query, limit: 100, status: statusFilter || undefined });
-        if (seq !== searchSeqRef.current) return;
-        setSearchResults(response.naps || []);
-      } catch (error) {
-        console.error('Error searching NAPs:', error);
-      } finally {
-        if (seq === searchSeqRef.current) {
-          setSearching(false);
-        }
+    const seq = ++searchSeqRef.current;
+    try {
+      setSearching(true);
+      const response = await napsAPI.search({ q: query, limit: 100, status: statusFilter || undefined });
+      if (seq !== searchSeqRef.current) return;
+      setSearchResults(response.naps || []);
+    } catch (error) {
+      console.error('Error searching NAPs:', error);
+    } finally {
+      if (seq === searchSeqRef.current) {
+        setSearching(false);
       }
+    }
+  }, [statusFilter]);
+
+  // Enter-to-select: submit is the debounce bypass, but the still-pending
+  // debounced callback must not repeat the identical query right after.
+  const lastSubmitRef = useRef(0);
+  const lastSubmitQueryRef = useRef(null);
+  const debouncedSearch = useMemo(
+    () => debounce((query) => {
+      if (Date.now() - lastSubmitRef.current < 600 && lastSubmitQueryRef.current === query) return;
+      performNapSearch(query);
     }, 300),
-    [statusFilter]
+    [performNapSearch]
   );
+
+  const handleSubmitEditing = () => {
+    Keyboard.dismiss();
+
+    if (coordinateSearchResult) {
+      // Coordinates: re-fly (idempotent) at the existing close-up zoom.
+      if (mapRef.current) {
+        mapRef.current.animateToRegion({
+          latitude: coordinateSearchResult.latitude,
+          longitude: coordinateSearchResult.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 800);
+      }
+      return;
+    }
+
+    if (searchScope === 'places') {
+      // Select the first pending result only — never refetch Photon on Enter.
+      if (placesPhase === 'done' && placeResults.length > 0) {
+        flyToPlace(placeResults[0]);
+      }
+      return;
+    }
+
+    // NAPs scope: flush the NAP search immediately; no place selection here.
+    const q = searchQuery.trim();
+    if (q.length >= 2) {
+      lastSubmitRef.current = Date.now();
+      lastSubmitQueryRef.current = q;
+      performNapSearch(q);
+    }
+  };
 
   const handleSearchChange = (text) => {
     setSearchQuery(text);
@@ -416,6 +458,7 @@ const NapMapScreen = ({ navigation }) => {
     const [lon, lat] = feature.geometry?.coordinates || [];
     const c = parseCoordinate(lat, lon);
     if (!c) return;
+    Keyboard.dismiss();
     const delta = deltaFor(placeKind(feature));
     setDroppedPin(null);
     setSearchMarker({ latitude: c.latitude, longitude: c.longitude });
@@ -441,6 +484,7 @@ const NapMapScreen = ({ navigation }) => {
   };
 
   const selectNap = useCallback((nap) => {
+    Keyboard.dismiss();
     setSelectedNap(nap);
     setDetailsExpanded(false);
   }, []);
@@ -762,6 +806,8 @@ const NapMapScreen = ({ navigation }) => {
             placeholderTextColor={COLORS.gray}
             value={searchQuery}
             onChangeText={handleSearchChange}
+            onSubmitEditing={handleSubmitEditing}
+            returnKeyType="search"
             autoCapitalize="none"
           />
           {searchQuery.length > 0 && (
