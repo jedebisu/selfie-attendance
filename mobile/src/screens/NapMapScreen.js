@@ -33,6 +33,8 @@ const MIN_REFRESH_DISTANCE_M = 50;
 const LIVE_UPDATE_DISTANCE_M = 25;
 const LIVE_UPDATE_INTERVAL_MS = 10000;
 const NEARBY_REFRESH_DEBOUNCE_MS = 1200;
+// Fallback bias center (Cebu) when neither the visible map region nor GPS has a usable coordinate.
+const MAP_DEFAULT_CENTER = { latitude: 10.3157, longitude: 123.8854 };
 
 const STATUS_FILTERS = [
   { label: 'All', value: '' },
@@ -68,6 +70,7 @@ const NapMapScreen = ({ navigation }) => {
   const [nearbyNaps, setNearbyNaps] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [placeResults, setPlaceResults] = useState([]);
+  const [placesPhase, setPlacesPhase] = useState('idle'); // 'idle' | 'loading' | 'error' | 'empty' | 'done'
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [searchScope, setSearchScope] = useState('naps'); // 'naps' | 'places'
@@ -96,6 +99,8 @@ const NapMapScreen = ({ navigation }) => {
   const lastFetchedCenterRef = useRef(null);
   const fetchNearbyNapsRef = useRef(null);
   const lastRouteRef = useRef({ napId: null, origin: null });
+  const mapRegionRef = useRef(null);        // latest visible map region (Photon bias source)
+  const lastPlacesQueryRef = useRef(null);  // last non-empty places query (Retry target)
   const myLocationBusyRef = useRef(false);
   const watcherRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -345,44 +350,81 @@ const NapMapScreen = ({ navigation }) => {
     setSearchMarker(null);
   };
 
-  // Places search via Photon geocoder (no API key required)
-  const debouncedPlacesSearch = useCallback(
-    debounce(async (query) => {
-      if (query.trim().length < 2) {
-        setPlaceResults([]);
-        return;
-      }
+  // Photon bias source: the visible map region if any (preferred over GPS so a
+  // user browsing another area gets results there), else GPS, else Cebu.
+  const biasCenter = () => {
+    if (mapRegionRef.current) return mapRegionRef.current;
+    if (locationRef.current) return locationRef.current;
+    return MAP_DEFAULT_CENTER;
+  };
 
-      const seq = ++searchSeqRef.current;
-      try {
-        const c = location || { latitude: 10.3157, longitude: 123.8854 };
-        const res = await fetch(`https://photon.komoot.io/api?q=${encodeURIComponent(query)}&lat=${c.latitude.toFixed(4)}&lon=${c.longitude.toFixed(4)}&lang=en&limit=8`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const d = await res.json();
-        if (seq !== searchSeqRef.current) return;
+  // Result-type zoom deltas (web-app convention): province-wide → city →
+  // street/POI close-up. Unknown or missing classification falls to the
+  // close-up default via placeKind's own fallback.
+  const deltaFor = (kind) => {
+    switch (kind) {
+      case 'Province': return 1.0;
+      case 'City': return 0.1;
+      default: return 0.01;
+    }
+  };
 
-        const feats = (d.features || []).filter((f) => f.geometry?.coordinates);
-        setPlaceResults(feats);
-      } catch (error) {
-        console.error('Places search error:', error);
-        setPlaceResults([]);
-      }
-    }, 350),
-    [location]
+  // Shared Photon runner (no API key required). Phases: loading → empty |
+  // error | done. Stale responses (superseded seq) are dropped untouched.
+  const runPlacesSearch = useCallback(async (query) => {
+    const q = String(query || '').trim();
+    if (q.length < 2) {
+      lastPlacesQueryRef.current = null;
+      setPlaceResults([]);
+      setPlacesPhase('idle');
+      return;
+    }
+    const seq = ++searchSeqRef.current;
+    lastPlacesQueryRef.current = q;
+    setPlacesPhase('loading');
+    try {
+      const c = biasCenter();
+      const res = await fetch(
+        `https://photon.komoot.io/api?q=${encodeURIComponent(q)}&lat=${c.latitude.toFixed(4)}&lon=${c.longitude.toFixed(4)}&lang=en&limit=8`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json(); // malformed JSON throws → 'error'
+      if (seq !== searchSeqRef.current) return;
+      const feats = (d.features || []).filter((f) => f.geometry?.coordinates);
+      setPlaceResults(feats);
+      setPlacesPhase(feats.length ? 'done' : 'empty');
+    } catch (error) {
+      console.error('Places search error:', error);
+      if (seq !== searchSeqRef.current) return;
+      setPlacesPhase('error');
+    }
+  }, []);
+
+  const retryPlacesSearch = useCallback(() => {
+    if (lastPlacesQueryRef.current) {
+      runPlacesSearch(lastPlacesQueryRef.current);
+    }
+  }, [runPlacesSearch]);
+
+  // Places scope keeps the 350 ms debounce wrapper around the shared runner.
+  const debouncedPlacesSearch = useMemo(
+    () => debounce((query) => { runPlacesSearch(query); }, 350),
+    [runPlacesSearch]
   );
 
   const flyToPlace = (feature) => {
     const [lon, lat] = feature.geometry?.coordinates || [];
     const c = parseCoordinate(lat, lon);
     if (!c) return;
+    const delta = deltaFor(placeKind(feature));
     setDroppedPin(null);
     setSearchMarker({ latitude: c.latitude, longitude: c.longitude });
     if (mapRef.current) {
       mapRef.current.animateToRegion({
         latitude: c.latitude,
         longitude: c.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+        latitudeDelta: delta,
+        longitudeDelta: delta,
       }, 800);
     }
   };
@@ -630,13 +672,38 @@ const NapMapScreen = ({ navigation }) => {
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { latitude: 10.3157, longitude: 123.8854, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
-  /** Places-scope panel: results / no-results (Task 2 adds loading + error states). */
+  /** Places-scope panel: loading / error+Retry / no-results / results. */
   const renderPlacesPanel = () => {
     if (coordinateSearchResult) return null;
     if (searchScope !== 'places' || searchQuery.trim().length < 2) return null;
-    if (placeResults.length > 0) {
+    if (placesPhase === 'loading') {
       return (
-        <View style={styles.placeResultsContainer}>
+        <View style={styles.placeNoResults}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+          <Text style={styles.placeNoResultsText}>Searching places…</Text>
+        </View>
+      );
+    }
+    if (placesPhase === 'error') {
+      return (
+        <View style={styles.placeNoResults}>
+          <Text style={styles.placeNoResultsText}>Places search unavailable</Text>
+          <TouchableOpacity style={styles.placeRetryButton} onPress={retryPlacesSearch}>
+            <Text style={styles.placeRetryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    if (placesPhase === 'empty') {
+      return (
+        <View style={styles.placeNoResults}>
+          <Text style={styles.placeNoResultsText}>No places found</Text>
+        </View>
+      );
+    }
+    if (placesPhase !== 'done' || placeResults.length === 0) return null;
+    return (
+      <View style={styles.placeResultsContainer}>
           <FlatList
             data={placeResults}
             keyExtractor={(item, index) => `place-${index}`}
@@ -663,12 +730,6 @@ const NapMapScreen = ({ navigation }) => {
             }}
             style={styles.placeResultsList}
           />
-        </View>
-      );
-    }
-    return (
-      <View style={styles.placeNoResults}>
-        <Text style={styles.placeNoResultsText}>No places found</Text>
       </View>
     );
   };
@@ -811,6 +872,11 @@ const NapMapScreen = ({ navigation }) => {
         showsUserLocation={true}
         followsUserLocation={false}
         onLongPress={handleMapLongPress}
+        onRegionChangeComplete={(r) => {
+          // Track the visible region center for Photon bias (ref only — no re-render).
+          const c = parseCoordinate(r.latitude, r.longitude);
+          if (c) mapRegionRef.current = c;
+        }}
       >
         {/* 1km radius circle follows the active search coordinate */}
         {activeCoordinate && !isSearching && (
@@ -1222,6 +1288,18 @@ const styles = StyleSheet.create({
   placeNoResultsText: {
     fontSize: 14,
     color: COLORS.gray,
+  },
+  placeRetryButton: {
+    marginTop: 8,
+    backgroundColor: COLORS.primary,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 20,
+  },
+  placeRetryText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
   },
   statusBar: {
     marginTop: 6,
