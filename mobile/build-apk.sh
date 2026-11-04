@@ -47,8 +47,8 @@ cd android
 
 # Archive
 APK_PATH="app/build/outputs/apk/release/app-release.apk"
-cp "$APK_PATH" "../apk/selfie-attendance-$VERSION.apk"
-cp "$APK_PATH" "../selfie-attendance-latest.apk"
+cp "$APK_PATH" "../apk/EBISU-TA-$VERSION.apk"
+cp "$APK_PATH" "../EBISU-TA.apk"
 
 echo ""
 echo "Build complete:"
