@@ -10,7 +10,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthContext';
 import { napsAPI } from '../services/api';
 import { fetchRoute } from '../services/routing';
-import { debounce, parseCoordinate, formatDateTime, distanceMeters } from '../utils/helpers';
+import { debounce, parseCoordinate, parseCoordinateInput, formatCoords, formatDateTime, distanceMeters } from '../utils/helpers';
 import { getCachedNapsUpdatedAt, cacheNapsUpdatedAt } from '../services/cache';
 import StatusBadge from '../components/StatusBadge';
 
@@ -67,8 +67,10 @@ const NapMapScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [nearbyNaps, setNearbyNaps] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
+  const [placeResults, setPlaceResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [searchScope, setSearchScope] = useState('naps'); // 'naps' | 'places'
   const [location, setLocation] = useState(null);
   const [selectedNap, setSelectedNap] = useState(null);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
@@ -77,6 +79,8 @@ const NapMapScreen = ({ navigation }) => {
   const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [droppedPin, setDroppedPin] = useState(null);
+  const [searchMarker, setSearchMarker] = useState(null);
+  const [coordinateSearchResult, setCoordinateSearchResult] = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
   const [routeDistanceKm, setRouteDistanceKm] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
@@ -292,8 +296,36 @@ const NapMapScreen = ({ navigation }) => {
 
   const handleSearchChange = (text) => {
     setSearchQuery(text);
-    setIsSearching(text.trim().length >= 2);
-    debouncedSearch(text);
+
+    // Check for coordinate input first (works in any search)
+    const coords = parseCoordinateInput(text);
+    if (coords) {
+      setIsSearching(false);
+      setSearchResults([]);
+      setCoordinateSearchResult(coords);
+      setSearchMarker(coords);
+      // Fly to location
+      if (mapRef.current) {
+        mapRef.current.animateToRegion({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 800);
+      }
+      return;
+    }
+
+    setCoordinateSearchResult(null);
+    setSearchMarker(null);
+
+    if (searchScope === 'places') {
+      setIsSearching(false);
+      debouncedPlacesSearch(text);
+    } else {
+      setIsSearching(text.trim().length >= 2);
+      debouncedSearch(text);
+    }
   };
 
   const handleStatusFilter = (value) => {
@@ -307,7 +339,63 @@ const NapMapScreen = ({ navigation }) => {
     searchSeqRef.current++;
     setSearchQuery('');
     setSearchResults([]);
+    setPlaceResults([]);
     setIsSearching(false);
+    setCoordinateSearchResult(null);
+    setSearchMarker(null);
+  };
+
+  // Places search via Photon geocoder (no API key required)
+  const debouncedPlacesSearch = useCallback(
+    debounce(async (query) => {
+      if (query.trim().length < 2) {
+        setPlaceResults([]);
+        return;
+      }
+
+      const seq = ++searchSeqRef.current;
+      try {
+        const c = location || { latitude: 10.3157, longitude: 123.8854 };
+        const res = await fetch(`https://photon.komoot.io/api?q=${encodeURIComponent(query)}&lat=${c.latitude.toFixed(4)}&lon=${c.longitude.toFixed(4)}&lang=en&limit=8`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const d = await res.json();
+        if (seq !== searchSeqRef.current) return;
+
+        const feats = (d.features || []).filter((f) => f.geometry?.coordinates);
+        setPlaceResults(feats);
+      } catch (error) {
+        console.error('Places search error:', error);
+        setPlaceResults([]);
+      }
+    }, 350),
+    [location]
+  );
+
+  const flyToPlace = (feature) => {
+    const [lon, lat] = feature.geometry?.coordinates || [];
+    const c = parseCoordinate(lat, lon);
+    if (!c) return;
+    setDroppedPin(null);
+    setSearchMarker({ latitude: c.latitude, longitude: c.longitude });
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: c.latitude,
+        longitude: c.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 800);
+    }
+  };
+
+  const placeKind = (f) => {
+    const p = f.properties || {};
+    const k = String(p.osm_key || '').toLowerCase();
+    const v = String(p.osm_value || '').toLowerCase();
+    if (k === 'place' && ['state', 'province', 'region', 'county'].includes(v)) return 'Province';
+    if (k === 'place' || (k === 'boundary' && v === 'administrative')) return 'City';
+    if (k === 'highway') return 'Street';
+    if (k === 'building' || ['house', 'apartments', 'residential', 'detached'].includes(v)) return 'House';
+    return 'POI';
   };
 
   const selectNap = useCallback((nap) => {
@@ -542,81 +630,178 @@ const NapMapScreen = ({ navigation }) => {
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { latitude: 10.3157, longitude: 123.8854, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
+  /** Places-scope panel: results / no-results (Task 2 adds loading + error states). */
+  const renderPlacesPanel = () => {
+    if (coordinateSearchResult) return null;
+    if (searchScope !== 'places' || searchQuery.trim().length < 2) return null;
+    if (placeResults.length > 0) {
+      return (
+        <View style={styles.placeResultsContainer}>
+          <FlatList
+            data={placeResults}
+            keyExtractor={(item, index) => `place-${index}`}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => {
+              const p = item.properties || {};
+              const [lon, lat] = item.geometry.coordinates;
+              const kind = placeKind(item);
+              const sub = [p.district, p.locality, p.city, p.county, p.state]
+                .map((x) => String(x || '').trim()).filter(Boolean).join(', ');
+              return (
+                <TouchableOpacity
+                  style={styles.placeResultItem}
+                  onPress={() => flyToPlace(item)}
+                >
+                  <View style={styles.placeResultDot} />
+                  <View style={styles.placeResultContent}>
+                    <Text style={styles.placeResultName}>{p.name || searchQuery}</Text>
+                    <Text style={styles.placeResultSub}>{kind}{sub ? ` · ${sub}` : ''}</Text>
+                    <Text style={styles.placeResultCoords}>{formatCoords(lat, lon)}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+            style={styles.placeResultsList}
+          />
+        </View>
+      );
+    }
+    return (
+      <View style={styles.placeNoResults}>
+        <Text style={styles.placeNoResultsText}>No places found</Text>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search NAP ID, Building, City..."
-          placeholderTextColor={COLORS.gray}
-          value={searchQuery}
-          onChangeText={handleSearchChange}
-          autoCapitalize="none"
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-            <Text style={styles.clearButtonText}>✕</Text>
+      {/* Search + results overlay — one stacked column above the map */}
+      <View style={styles.searchStack}>
+        {/* Scope toggle */}
+        <View style={styles.scopeToggle}>
+          <TouchableOpacity
+            style={[styles.scopeButton, searchScope === 'naps' && styles.scopeButtonActive]}
+            onPress={() => { setSearchScope('naps'); setPlaceResults([]); }}
+          >
+            <Text style={[styles.scopeButtonText, searchScope === 'naps' && styles.scopeButtonTextActive]}>NAPs</Text>
           </TouchableOpacity>
-        )}
-        {searching && (
-          <ActivityIndicator size="small" color={COLORS.primary} style={styles.searchLoader} />
-        )}
-      </View>
-
-      {/* Status Bar */}
-      <View style={styles.statusBar}>
-        <View style={styles.statusLeft}>
-          <Text style={styles.statusText}>
-            {isSearching
-              ? `${searchResults.length} search results`
-              : droppedPin
-                ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km of pin${nearbyCapReached ? ` (limit ${NEARBY_LIMIT})` : ''}`
-                : `${nearbyNaps.length} NAPs within ${RADIUS_KM}km${nearbyCapReached ? ` (limit ${NEARBY_LIMIT})` : ''}`
-            }
-          </Text>
-          <Text style={[styles.dataDateText, dataDateError && !dataDate && styles.dataDateError]}>
-            Data last updated:{' '}
-            {dataDate
-              ? formatDateTime(dataDate)
-              : dataDateError
-                ? "(can't reach server)"
-                : '—'}
-          </Text>
+          <TouchableOpacity
+            style={[styles.scopeButton, searchScope === 'places' && styles.scopeButtonActive]}
+            onPress={() => { setSearchScope('places'); setSearchResults([]); setIsSearching(false); }}
+          >
+            <Text style={[styles.scopeButtonText, searchScope === 'places' && styles.scopeButtonTextActive]}>Places</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={() => setShowList(!showList)} style={styles.listToggle}>
-          <Text style={styles.listToggleText}>
-            {showList ? '🗺️ Map' : '📋 List'}
-          </Text>
-        </TouchableOpacity>
-      </View>
 
-      {/* Status filter chips (while searching) */}
-      {isSearching && (
-        <View style={styles.chipsRow}>
-          {STATUS_FILTERS.map((f) => (
-            <TouchableOpacity
-              key={f.value || 'all'}
-              style={[styles.chip, statusFilter === f.value && styles.chipActive]}
-              onPress={() => handleStatusFilter(f.value)}
-            >
-              <Text style={[styles.chipText, statusFilter === f.value && styles.chipTextActive]}>
-                {f.label}
-              </Text>
+        {/* Search bar */}
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search NAP ID, Building, City, or coords..."
+            placeholderTextColor={COLORS.gray}
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            autoCapitalize="none"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+              <Text style={styles.clearButtonText}>✕</Text>
             </TouchableOpacity>
-          ))}
+          )}
+          {searching && (
+            <ActivityIndicator size="small" color={COLORS.primary} style={styles.searchLoader} />
+          )}
         </View>
-      )}
 
-      {/* Pinned location banner */}
-      {droppedPin && !isSearching && (
-        <View style={styles.pinBanner}>
-          <Text style={styles.pinBannerText}>📍 Checking around pinned spot</Text>
-          <TouchableOpacity onPress={clearPin} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.pinBannerClear}>Clear ✕</Text>
+        {/* Coordinate Search Result Card */}
+        {coordinateSearchResult && (
+          <View style={styles.coordResultCard}>
+            <View style={styles.coordResultHeader}>
+              <Text style={styles.coordResultTitle}>📍 Specified Coordinates</Text>
+              <Text style={styles.coordResultInput}>{searchQuery}</Text>
+            </View>
+            <View style={styles.coordResultActions}>
+              <TouchableOpacity
+                style={styles.coordCopyButton}
+                onPress={() => copyToClipboard(formatCoords(coordinateSearchResult.latitude, coordinateSearchResult.longitude))}
+              >
+                <Text style={styles.coordCopyButtonText}>⧉ Copy {formatCoords(coordinateSearchResult.latitude, coordinateSearchResult.longitude)}</Text>
+              </TouchableOpacity>
+              <View style={styles.coordCopyRow}>
+                <TouchableOpacity
+                  style={[styles.coordCopyButton, styles.coordCopyButtonSmall]}
+                  onPress={() => copyToClipboard(coordinateSearchResult.latitude.toFixed(6))}
+                >
+                  <Text style={styles.coordCopyButtonText}>Lat: {coordinateSearchResult.latitude.toFixed(6)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.coordCopyButton, styles.coordCopyButtonSmall]}
+                  onPress={() => copyToClipboard(coordinateSearchResult.longitude.toFixed(6))}
+                >
+                  <Text style={styles.coordCopyButtonText}>Lng: {coordinateSearchResult.longitude.toFixed(6)}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Places panel (results / empty — loading + error states in Task 2) */}
+        {renderPlacesPanel()}
+
+        {/* Status Bar */}
+        <View style={styles.statusBar}>
+          <View style={styles.statusLeft}>
+            <Text style={styles.statusText}>
+              {isSearching
+                ? `${searchResults.length} search results`
+                : droppedPin
+                  ? `${nearbyNaps.length} NAPs within ${RADIUS_KM}km of pin${nearbyCapReached ? ` (limit ${NEARBY_LIMIT})` : ''}`
+                  : `${nearbyNaps.length} NAPs within ${RADIUS_KM}km${nearbyCapReached ? ` (limit ${NEARBY_LIMIT})` : ''}`
+              }
+            </Text>
+            <Text style={[styles.dataDateText, dataDateError && !dataDate && styles.dataDateError]}>
+              Data last updated:{' '}
+              {dataDate
+                ? formatDateTime(dataDate)
+                : dataDateError
+                  ? "(can't reach server)"
+                  : '—'}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => setShowList(!showList)} style={styles.listToggle}>
+            <Text style={styles.listToggleText}>
+              {showList ? '🗺️ Map' : '📋 List'}
+            </Text>
           </TouchableOpacity>
         </View>
-      )}
+
+        {/* Status filter chips (while searching) */}
+        {isSearching && (
+          <View style={styles.chipsRow}>
+            {STATUS_FILTERS.map((f) => (
+              <TouchableOpacity
+                key={f.value || 'all'}
+                style={[styles.chip, statusFilter === f.value && styles.chipActive]}
+                onPress={() => handleStatusFilter(f.value)}
+              >
+                <Text style={[styles.chipText, statusFilter === f.value && styles.chipTextActive]}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Pinned location banner */}
+        {droppedPin && !isSearching && (
+          <View style={styles.pinBanner}>
+            <Text style={styles.pinBannerText}>📍 Checking around pinned spot</Text>
+            <TouchableOpacity onPress={clearPin} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.pinBannerClear}>Clear ✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
 
       {/* Map */}
       <MapView
@@ -647,6 +832,18 @@ const NapMapScreen = ({ navigation }) => {
             onDrag={handlePinDrag}
             onDragEnd={handlePinDragEnd}
           />
+        )}
+
+        {/* Search marker (coordinate search result) */}
+        {searchMarker && (
+          <Marker
+            coordinate={{ latitude: searchMarker.latitude, longitude: searchMarker.longitude }}
+            pinColor={COLORS.pin}
+          >
+            <View style={styles.searchMarkerContainer}>
+              <View style={styles.searchMarkerDot} />
+            </View>
+          </Marker>
         )}
 
         {/* Active route along roads from current location / pin to selected NAP */}
@@ -834,12 +1031,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  searchContainer: {
+  searchStack: {
     position: 'absolute',
     top: 8,
     left: 12,
     right: 12,
     zIndex: 20,
+  },
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -874,12 +1073,158 @@ const styles = StyleSheet.create({
   searchLoader: {
     marginLeft: 8,
   },
+  coordResultCard: {
+    backgroundColor: '#fff',
+    marginTop: 8,
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  coordResultHeader: {
+    marginBottom: 8,
+  },
+  coordResultTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.dark,
+  },
+  coordResultInput: {
+    fontSize: 12,
+    color: COLORS.gray,
+    marginTop: 2,
+  },
+  coordResultActions: {
+    gap: 6,
+  },
+  coordCopyButton: {
+    backgroundColor: COLORS.lightGray,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  coordCopyButtonSmall: {
+    flex: 1,
+  },
+  coordCopyButtonText: {
+    fontSize: 12,
+    color: COLORS.dark,
+    fontWeight: '500',
+  },
+  coordCopyRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  searchMarkerContainer: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchMarkerDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.pin,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: COLORS.pin,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+  },
+  scopeToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  scopeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  scopeButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  scopeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.gray,
+  },
+  scopeButtonTextActive: {
+    color: '#fff',
+  },
+  placeResultsContainer: {
+    maxHeight: 200,
+    marginTop: 8,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.lightGray,
+  },
+  placeResultsList: {
+    flex: 1,
+  },
+  placeResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.lightGray,
+  },
+  placeResultDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.gray,
+    marginRight: 12,
+  },
+  placeResultContent: {
+    flex: 1,
+  },
+  placeResultName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.dark,
+  },
+  placeResultSub: {
+    fontSize: 12,
+    color: COLORS.gray,
+    marginTop: 2,
+  },
+  placeResultCoords: {
+    fontSize: 11,
+    color: COLORS.gray,
+    marginTop: 2,
+    fontFamily: 'monospace',
+  },
+  placeNoResults: {
+    padding: 20,
+    marginTop: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.lightGray,
+  },
+  placeNoResultsText: {
+    fontSize: 14,
+    color: COLORS.gray,
+  },
   statusBar: {
-    position: 'absolute',
-    top: 62,
-    left: 12,
-    right: 12,
-    zIndex: 20,
+    marginTop: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -917,11 +1262,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chipsRow: {
-    position: 'absolute',
-    top: 108,
-    left: 12,
-    right: 12,
-    zIndex: 20,
+    marginTop: 6,
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.97)',
     borderRadius: 8,
@@ -947,11 +1288,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   pinBanner: {
-    position: 'absolute',
-    top: 108,
-    left: 12,
-    right: 12,
-    zIndex: 20,
+    marginTop: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -997,7 +1334,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     position: 'absolute',
-    top: 92,
+    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
