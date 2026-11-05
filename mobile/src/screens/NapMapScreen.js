@@ -287,6 +287,7 @@ const NapMapScreen = ({ navigation }) => {
     const seq = ++napSeqRef.current;
     try {
       setSearching(true);
+      setNapError(false); // clear stale error before a fresh search starts
       const response = await napsAPI.search({ q: query, limit: 100, status: statusFilter || undefined });
       if (seq !== napSeqRef.current) return;
       setNapError(false);
@@ -381,6 +382,10 @@ const NapMapScreen = ({ navigation }) => {
       setPlaceResults([]);
       setPlacesPhase('idle');
       setNapError(false);
+      // Invalidate any mid-flight NAP/Photon response for the previous text
+      // query so a stale result can't render below the coordinate card.
+      napSeqRef.current++;
+      placeSeqRef.current++;
       // Fly to location
       if (mapRef.current) {
         mapRef.current.animateToRegion({
