@@ -73,7 +73,7 @@ const NapMapScreen = ({ navigation }) => {
   const [placesPhase, setPlacesPhase] = useState('idle'); // 'idle' | 'loading' | 'error' | 'empty' | 'done'
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
-  const [searchScope, setSearchScope] = useState('naps'); // 'naps' | 'places'
+
   const [location, setLocation] = useState(null);
   const [selectedNap, setSelectedNap] = useState(null);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
@@ -81,6 +81,7 @@ const NapMapScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
+  const [napError, setNapError] = useState(false); // NAP engine error flag (unified panel shows per-engine Retry)
   const [droppedPin, setDroppedPin] = useState(null);
   const [searchMarker, setSearchMarker] = useState(null);
   const [coordinateSearchResult, setCoordinateSearchResult] = useState(null);
@@ -91,7 +92,8 @@ const NapMapScreen = ({ navigation }) => {
   const [dataDateError, setDataDateError] = useState(false);
   const [locating, setLocating] = useState(false);
   const mapRef = useRef(null);
-  const searchSeqRef = useRef(0);
+  const napSeqRef = useRef(0);     // guards NAP-search responses (unified search engine #1)
+  const placeSeqRef = useRef(0);   // guards Photon responses (unified search engine #2)
   const nearbySeqRef = useRef(0);
   const locationRef = useRef(null);
   const droppedPinRef = useRef(null);
@@ -275,17 +277,18 @@ const NapMapScreen = ({ navigation }) => {
 
   const performNapSearch = useCallback(async (query) => {
     if (query.trim().length < 2) {
-      searchSeqRef.current++;
+      napSeqRef.current++;
       setSearchResults([]);
       setIsSearching(false);
       return;
     }
 
-    const seq = ++searchSeqRef.current;
+    const seq = ++napSeqRef.current;
     try {
       setSearching(true);
       const response = await napsAPI.search({ q: query, limit: 100, status: statusFilter || undefined });
-      if (seq !== searchSeqRef.current) return;
+      if (seq !== napSeqRef.current) return;
+      setNapError(false);
       const naps = response.naps || [];
       setSearchResults(naps);
       // Empty NAP search: one labeled "Nearby places" Photon fallback per
@@ -295,23 +298,44 @@ const NapMapScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error searching NAPs:', error);
+      setNapError(true);
     } finally {
-      if (seq === searchSeqRef.current) {
+      if (seq === napSeqRef.current) {
         setSearching(false);
       }
     }
   }, [statusFilter, coordinateSearchResult, runPlacesSearch]);
 
-  // Enter-to-select: submit is the debounce bypass, but the still-pending
-  // debounced callback must not repeat the identical query right after.
-  const lastSubmitRef = useRef(0);
-  const lastSubmitQueryRef = useRef(null);
-  const debouncedSearch = useMemo(
+  // Unified search: NAP database + Photon places in parallel on every settled
+  // query. Each engine guards its own sequence ref, so a NAP response can
+  // never clobber a fresher Photon response (or vice versa).
+  const runUnifiedSearch = useCallback(async (query) => {
+    const q = String(query || '').trim();
+    if (q.length < 2) {
+      napSeqRef.current++;
+      placeSeqRef.current++;
+      setSearchResults([]);
+      setPlaceResults([]);
+      setIsSearching(false);
+      setPlacesPhase('idle');
+      setNapError(false);
+      return;
+    }
+    // Keystroke path: an Enter flush just happened (or is pending) for this
+    // identical query — don't repeat it 350 ms later.
+    lastFlushQueryRef.current = null;
+    performNapSearch(q);
+    runPlacesSearch(q);
+  }, [performNapSearch, runPlacesSearch]);
+
+  const lastFlushRef = useRef(0);
+  const lastFlushQueryRef = useRef(null); // target of an Enter flush (600 ms suppression)
+  const debouncedUnified = useMemo(
     () => debounce((query) => {
-      if (Date.now() - lastSubmitRef.current < 600 && lastSubmitQueryRef.current === query) return;
-      performNapSearch(query);
-    }, 300),
-    [performNapSearch]
+      if (Date.now() - lastFlushRef.current < 600 && lastFlushQueryRef.current === query) return;
+      runUnifiedSearch(query);
+    }, 350),
+    [runUnifiedSearch]
   );
 
   const handleSubmitEditing = () => {
@@ -330,20 +354,13 @@ const NapMapScreen = ({ navigation }) => {
       return;
     }
 
-    if (searchScope === 'places') {
-      // Select the first pending result only — never refetch Photon on Enter.
-      if (placesPhase === 'done' && placeResults.length > 0) {
-        flyToPlace(placeResults[0]);
-      }
-      return;
-    }
-
-    // NAPs scope: flush the NAP search immediately; no place selection here.
+    // Flush unified search immediately (NAP + Photon in parallel).
+    // Selection stays explicit — Enter never auto-selects a place.
     const q = searchQuery.trim();
     if (q.length >= 2) {
-      lastSubmitRef.current = Date.now();
-      lastSubmitQueryRef.current = q;
-      performNapSearch(q);
+      lastFlushRef.current = Date.now();
+      lastFlushQueryRef.current = q;
+      runUnifiedSearch(q);
     }
   };
 
@@ -356,7 +373,12 @@ const NapMapScreen = ({ navigation }) => {
       setIsSearching(false);
       setSearchResults([]);
       setCoordinateSearchResult(coords);
+      setDroppedPin(null); // BUG-002: a coordinate wins over a dropped pin
       setSearchMarker(coords);
+      // Clear engine outputs/phases while in coordinate mode
+      setPlaceResults([]);
+      setPlacesPhase('idle');
+      setNapError(false);
       // Fly to location
       if (mapRef.current) {
         mapRef.current.animateToRegion({
@@ -372,30 +394,28 @@ const NapMapScreen = ({ navigation }) => {
     setCoordinateSearchResult(null);
     setSearchMarker(null);
 
-    if (searchScope === 'places') {
-      setIsSearching(false);
-      debouncedPlacesSearch(text);
-    } else {
-      setIsSearching(text.trim().length >= 2);
-      debouncedSearch(text);
-    }
+    setIsSearching(text.trim().length >= 2);
+    debouncedUnified(text);
   };
 
   const handleStatusFilter = (value) => {
     setStatusFilter(value);
     if (searchQuery.trim().length >= 2) {
-      debouncedSearch(searchQuery);
+      performNapSearch(searchQuery);
     }
   };
 
   const clearSearch = () => {
-    searchSeqRef.current++;
+    napSeqRef.current++;
+    placeSeqRef.current++;
     setSearchQuery('');
     setSearchResults([]);
     setPlaceResults([]);
     setIsSearching(false);
     setCoordinateSearchResult(null);
     setSearchMarker(null);
+    setPlacesPhase('idle');
+    setNapError(false);
   };
 
   // Photon bias source: the visible map region if any (preferred over GPS so a
@@ -427,23 +447,27 @@ const NapMapScreen = ({ navigation }) => {
       setPlacesPhase('idle');
       return;
     }
-    const seq = ++searchSeqRef.current;
+    const seq = ++placeSeqRef.current;
     lastPlacesQueryRef.current = q;
     setPlacesPhase('loading');
     try {
       const c = biasCenter();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       const res = await fetch(
-        `https://photon.komoot.io/api?q=${encodeURIComponent(q)}&lat=${c.latitude.toFixed(4)}&lon=${c.longitude.toFixed(4)}&lang=en&limit=8`
+        `https://photon.komoot.io/api?q=${encodeURIComponent(q)}&lat=${c.latitude.toFixed(4)}&lon=${c.longitude.toFixed(4)}&lang=en&limit=8`,
+        { signal: controller.signal }
       );
+      clearTimeout(timeoutId);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json(); // malformed JSON throws → 'error'
-      if (seq !== searchSeqRef.current) return;
+      if (seq !== placeSeqRef.current) return;
       const feats = (d.features || []).filter((f) => f.geometry?.coordinates);
       setPlaceResults(feats);
       setPlacesPhase(feats.length ? 'done' : 'empty');
     } catch (error) {
       console.error('Places search error:', error);
-      if (seq !== searchSeqRef.current) return;
+      if (seq !== placeSeqRef.current) return;
       setPlacesPhase('error');
     }
   }, []);
@@ -453,12 +477,6 @@ const NapMapScreen = ({ navigation }) => {
       runPlacesSearch(lastPlacesQueryRef.current);
     }
   }, [runPlacesSearch]);
-
-  // Places scope keeps the 350 ms debounce wrapper around the shared runner.
-  const debouncedPlacesSearch = useMemo(
-    () => debounce((query) => { runPlacesSearch(query); }, 350),
-    [runPlacesSearch]
-  );
 
   const flyToPlace = (feature) => {
     const [lon, lat] = feature.geometry?.coordinates || [];
@@ -752,103 +770,17 @@ const NapMapScreen = ({ navigation }) => {
     />
   );
 
-  /** Places-scope panel: loading / error+Retry / no-results / results. */
-  const renderPlacesPanel = () => {
-    if (coordinateSearchResult) return null;
-    if (searchScope !== 'places' || searchQuery.trim().length < 2) return null;
-    if (placesPhase === 'loading') {
-      return (
-        <View style={styles.placeNoResults}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={styles.placeNoResultsText}>Searching places…</Text>
-        </View>
-      );
-    }
-    if (placesPhase === 'error') {
-      return (
-        <View style={styles.placeNoResults}>
-          <Text style={styles.placeNoResultsText}>Places search unavailable</Text>
-          <TouchableOpacity style={styles.placeRetryButton} onPress={retryPlacesSearch}>
-            <Text style={styles.placeRetryText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-    if (placesPhase === 'empty') {
-      return (
-        <View style={styles.placeNoResults}>
-          <Text style={styles.placeNoResultsText}>No places found</Text>
-        </View>
-      );
-    }
-    if (placesPhase !== 'done' || placeResults.length === 0) return null;
-    return (
-      <View style={styles.placeResultsContainer}>
-        {renderPlaceRows()}
-      </View>
-    );
-  };
-
-  /** NAP-scope empty state: "No NAPs found" + a clearly-labeled external
-   * nearby-places section driven by the shared Photon runner (placesPhase). */
-  const renderNapEmptyPanel = () => {
-    if (coordinateSearchResult) return null;
-    if (searchScope !== 'naps' || !isSearching || searching) return null;
-    if (searchQuery.trim().length < 2 || searchResults.length > 0) return null;
-    return (
-      <View style={styles.napEmptyPanel}>
-        <Text style={styles.napEmptyText}>No NAPs found for this search</Text>
-        {placesPhase === 'loading' && (
-          <Text style={styles.placesSectionLabel}>Searching nearby places…</Text>
-        )}
-        {placesPhase === 'error' && (
-          <View style={styles.napEmptySubWrap}>
-            <Text style={styles.napEmptySub}>Places search unavailable</Text>
-            <TouchableOpacity style={styles.placeRetryButton} onPress={retryPlacesSearch}>
-              <Text style={styles.placeRetryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {placesPhase === 'empty' && (
-          <Text style={styles.napEmptySub}>No nearby places found either</Text>
-        )}
-        {placesPhase === 'done' && placeResults.length > 0 && (
-          <View>
-            <Text style={styles.placesSectionLabel}>Nearby places — externally sourced</Text>
-            <View style={styles.placeResultsContainer}>
-              {renderPlaceRows()}
-            </View>
-          </View>
-        )}
-      </View>
-    );
-  };
+  /** Unified results panel (Task 2) */
 
   return (
     <View style={styles.container}>
       {/* Search + results overlay — one stacked column above the map */}
       <View style={styles.searchStack}>
-        {/* Scope toggle */}
-        <View style={styles.scopeToggle}>
-          <TouchableOpacity
-            style={[styles.scopeButton, searchScope === 'naps' && styles.scopeButtonActive]}
-            onPress={() => { setSearchScope('naps'); setPlaceResults([]); }}
-          >
-            <Text style={[styles.scopeButtonText, searchScope === 'naps' && styles.scopeButtonTextActive]}>NAPs</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.scopeButton, searchScope === 'places' && styles.scopeButtonActive]}
-            onPress={() => { setSearchScope('places'); setSearchResults([]); setIsSearching(false); }}
-          >
-            <Text style={[styles.scopeButtonText, searchScope === 'places' && styles.scopeButtonTextActive]}>Places</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Search bar */}
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search NAP ID, Building, City, or coords..."
+            placeholder="Search NAPs, places, or coordinates..."
             placeholderTextColor={COLORS.gray}
             value={searchQuery}
             onChangeText={handleSearchChange}
@@ -898,11 +830,7 @@ const NapMapScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Places panel (results / empty / loading / error states) */}
-        {renderPlacesPanel()}
-
-        {/* NAP-scope empty state + labeled external nearby-places fallback */}
-        {renderNapEmptyPanel()}
+        {/* Unified results panel — rendered below the coordinate card (Task 2) */}
 
         {/* Status Bar */}
         <View style={styles.statusBar}>
@@ -1298,35 +1226,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 4,
   },
-  scopeToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 3,
-    marginBottom: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  scopeButton: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  scopeButtonActive: {
-    backgroundColor: COLORS.primary,
-  },
-  scopeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.gray,
-  },
-  scopeButtonTextActive: {
-    color: '#fff',
-  },
+
   placeResultsContainer: {
     maxHeight: 200,
     marginTop: 8,
