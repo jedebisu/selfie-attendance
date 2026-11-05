@@ -103,6 +103,7 @@ const NapMapScreen = ({ navigation }) => {
   const lastRouteRef = useRef({ napId: null, origin: null });
   const mapRegionRef = useRef(null);        // latest visible map region (Photon bias source)
   const lastPlacesQueryRef = useRef(null);  // last non-empty places query (Retry target)
+  const lastUnifiedQueryRef = useRef(null); // latest settled unified query (section Retry targets)
   const myLocationBusyRef = useRef(false);
   const watcherRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -324,6 +325,7 @@ const NapMapScreen = ({ navigation }) => {
     // Keystroke path: an Enter flush just happened (or is pending) for this
     // identical query — don't repeat it 350 ms later.
     lastFlushQueryRef.current = null;
+    lastUnifiedQueryRef.current = q;
     performNapSearch(q);
     runPlacesSearch(q);
   }, [performNapSearch, runPlacesSearch]);
@@ -463,8 +465,17 @@ const NapMapScreen = ({ navigation }) => {
       const d = await res.json(); // malformed JSON throws → 'error'
       if (seq !== placeSeqRef.current) return;
       const feats = (d.features || []).filter((f) => f.geometry?.coordinates);
-      setPlaceResults(feats);
-      setPlacesPhase(feats.length ? 'done' : 'empty');
+      // Dedupe Photon hits (node/way/relation records for the same place)
+      const seen = new Set();
+      const unique = feats.filter((f) => {
+        const [lon, lat] = f.geometry.coordinates;
+        const key = `${String(f.properties?.osm_type || 'n/a')}|${String(f.properties?.osm_id ?? 'n/a')}|${Math.round(lat * 1e5)}|${Math.round(lon * 1e5)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setPlaceResults(unique);
+      setPlacesPhase(unique.length ? 'done' : 'empty');
     } catch (error) {
       console.error('Places search error:', error);
       if (seq !== placeSeqRef.current) return;
@@ -740,37 +751,122 @@ const NapMapScreen = ({ navigation }) => {
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { latitude: 10.3157, longitude: 123.8854, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
-  /** Shared Photon result rows (gray dots — external, never a NAP facility). */
-  const renderPlaceRows = () => (
-    <FlatList
-      data={placeResults}
-      keyExtractor={(item, index) => `place-${index}`}
-      keyboardShouldPersistTaps="handled"
-      renderItem={({ item }) => {
-        const p = item.properties || {};
-        const [lon, lat] = item.geometry.coordinates;
-        const kind = placeKind(item);
-        const sub = [p.district, p.locality, p.city, p.county, p.state]
-          .map((x) => String(x || '').trim()).filter(Boolean).join(', ');
-        return (
-          <TouchableOpacity
-            style={styles.placeResultItem}
-            onPress={() => flyToPlace(item)}
-          >
-            <View style={styles.placeResultDot} />
-            <View style={styles.placeResultContent}>
-              <Text style={styles.placeResultName}>{p.name || searchQuery}</Text>
-              <Text style={styles.placeResultSub}>{kind}{sub ? ` · ${sub}` : ''}</Text>
-              <Text style={styles.placeResultCoords}>{formatCoords(lat, lon)}</Text>
-            </View>
-          </TouchableOpacity>
-        );
-      }}
-      style={styles.placeResultsList}
-    />
-  );
-
   /** Unified results panel (Task 2) */
+
+  /** Single NAP facility row inside the unified results panel. */
+  const renderNapSearchRow = ({ item: nap }) => {
+    const color = getMarkerColor(nap.vacant_lines);
+    const address = [nap.barangay_name, nap.city_name, nap.province_name].filter(Boolean).join(', ') || 'N/A';
+    return (
+      <TouchableOpacity style={styles.unifiedNapRow} onPress={() => flyToNap(nap)}>
+        <View style={[styles.colorDot, { backgroundColor: color }]} />
+        <View style={styles.unifiedNapContent}>
+          <View style={styles.unifiedNapTitleRow}>
+            <Text style={styles.unifiedNapTitle} numberOfLines={1}>{nap.nap_id}</Text>
+            <StatusBadge status={nap.naps_status} />
+          </View>
+          <Text style={styles.unifiedNapSubtitle} numberOfLines={1}>{nap.building_served || 'N/A'}</Text>
+          <Text style={styles.unifiedNapAddress} numberOfLines={1}>{address}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  /** One panel, two labeled sections: registered NAP facilities first, then
+   * external places from Photon. Each section owns its loading/error/empty
+   * state so one engine failing never hides the other's results. */
+  const renderUnifiedResults = () => {
+    if (coordinateSearchResult) return null;
+    if (searchQuery.trim().length < 2) return null;
+
+    const bothSettled = !isSearching && placesPhase !== 'loading';
+    const nothingFound = bothSettled && searchResults.length === 0 && placeResults.length === 0;
+
+    return (
+      <View style={styles.unifiedResultsContainer}>
+        {/* NAP FACILITIES — registered facilities from /api/naps/search */}
+        <View style={styles.unifiedSection}>
+          <Text style={styles.sectionLabel}>NAP FACILITIES</Text>
+          {isSearching ? (
+            <View style={styles.sectionLoading}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={styles.sectionLoadingText}>Searching NAP facilities…</Text>
+            </View>
+          ) : napError ? (
+            <View style={styles.sectionError}>
+              <Text style={styles.sectionErrorText}>NAP search unavailable</Text>
+              <TouchableOpacity
+                style={styles.sectionRetry}
+                onPress={() => {
+                  if (lastUnifiedQueryRef.current) performNapSearch(lastUnifiedQueryRef.current);
+                }}
+              >
+                <Text style={styles.sectionRetryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : searchResults.length > 0 ? (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => String(item.id ?? item.nap_id)}
+              keyboardShouldPersistTaps="handled"
+              renderItem={renderNapSearchRow}
+              style={styles.unifiedList}
+            />
+          ) : null}
+        </View>
+
+        {/* PLACES & LOCATIONS — external results from Photon */}
+        <View style={styles.unifiedSection}>
+          <Text style={styles.sectionLabel}>PLACES &amp; LOCATIONS</Text>
+          {placesPhase === 'loading' ? (
+            <View style={styles.sectionLoading}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={styles.sectionLoadingText}>Searching places…</Text>
+            </View>
+          ) : placesPhase === 'error' ? (
+            <View style={styles.sectionError}>
+              <Text style={styles.sectionErrorText}>Places search unavailable</Text>
+              <TouchableOpacity style={styles.sectionRetry} onPress={retryPlacesSearch}>
+                <Text style={styles.sectionRetryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : placesPhase === 'empty' ? (
+            <Text style={styles.sectionEmptyText}>No places found</Text>
+          ) : placeResults.length > 0 ? (
+            <FlatList
+              data={placeResults}
+              keyExtractor={(item, index) => `place-${index}`}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                const p = item.properties || {};
+                const [lon, lat] = item.geometry.coordinates;
+                const kind = placeKind(item);
+                const sub = [p.district, p.locality, p.city, p.county, p.state]
+                  .map((x) => String(x || '').trim()).filter(Boolean).join(', ');
+                return (
+                  <TouchableOpacity style={styles.unifiedPlaceRow} onPress={() => flyToPlace(item)}>
+                    <View style={styles.placeResultDot} />
+                    <View style={styles.unifiedPlaceContent}>
+                      <Text style={styles.placeResultName}>{p.name || searchQuery}</Text>
+                      <Text style={styles.placeResultSub}>{kind}{sub ? ` · ${sub}` : ''}</Text>
+                      <Text style={styles.placeResultCoords}>{formatCoords(lat, lon)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+              style={styles.unifiedList}
+            />
+          ) : null}
+        </View>
+
+        {nothingFound && (
+          <View style={styles.noResultsAll}>
+            <Text style={styles.noResultsText}>No results found</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -830,7 +926,8 @@ const NapMapScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Unified results panel — rendered below the coordinate card (Task 2) */}
+        {/* Unified results panel — rendered below the coordinate card */}
+        {renderUnifiedResults()}
 
         {/* Status Bar */}
         <View style={styles.statusBar}>
@@ -1227,17 +1324,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
 
-  placeResultsContainer: {
-    maxHeight: 200,
-    marginTop: 8,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.lightGray,
-  },
-  placeResultsList: {
-    flex: 1,
-  },
   placeResultItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1296,34 +1382,117 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 12,
   },
-  napEmptyPanel: {
+  unifiedResultsContainer: {
     marginTop: 8,
     backgroundColor: '#fff',
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.lightGray,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  unifiedSection: {
     paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.lightGray,
   },
-  napEmptyText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.dark,
-  },
-  napEmptySub: {
-    fontSize: 13,
-    color: COLORS.gray,
-    marginTop: 4,
-  },
-  napEmptySubWrap: {
-    alignItems: 'flex-start',
-  },
-  placesSectionLabel: {
+  sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.gray,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
-    marginTop: 10,
-    marginBottom: 2,
+    marginBottom: 6,
+  },
+  sectionLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  sectionLoadingText: {
+    fontSize: 13,
+    color: COLORS.gray,
+    marginLeft: 8,
+  },
+  sectionError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  sectionErrorText: {
+    fontSize: 13,
+    color: COLORS.gray,
+  },
+  sectionRetry: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  sectionRetryText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 11,
+  },
+  sectionEmptyText: {
+    fontSize: 13,
+    color: COLORS.gray,
+  },
+  noResultsAll: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  noResultsText: {
+    fontSize: 14,
+    color: COLORS.gray,
+  },
+  unifiedNapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.lightGray,
+  },
+  unifiedNapContent: {
+    flex: 1,
+  },
+  unifiedNapTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  unifiedNapTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.dark,
+  },
+  unifiedNapSubtitle: {
+    fontSize: 12,
+    color: COLORS.dark,
+  },
+  unifiedNapAddress: {
+    fontSize: 12,
+    color: COLORS.gray,
+  },
+  unifiedPlaceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.lightGray,
+  },
+  unifiedPlaceContent: {
+    flex: 1,
+  },
+  unifiedList: {
+    flex: 1,
   },
   statusBar: {
     marginTop: 6,
