@@ -72,6 +72,11 @@ export const leaveAPI = {
     return response.data;
   },
 
+  create: async (data) => {
+    const response = await api.post('/leave', data);
+    return response.data;
+  },
+
   update: async (id, status) => {
     const response = await api.put(`/leave/${id}`, { status });
     return response.data;

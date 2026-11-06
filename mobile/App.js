@@ -10,6 +10,7 @@ import CameraScreen from './src/screens/CameraScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import NapMapScreen from './src/screens/NapMapScreen';
 import LeaveApprovalScreen from './src/screens/LeaveApprovalScreen';
+import LeaveRequestScreen from './src/screens/LeaveRequestScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import './src/services/locationTracker';
 import { ActivityIndicator, View } from 'react-native';
@@ -63,6 +64,7 @@ function RootNavigator() {
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
           <Stack.Screen name="Camera" component={CameraScreen} options={{ headerShown: false }} />
           <Stack.Screen name="LeaveApproval" component={LeaveApprovalScreen} options={{ title: 'Leave Approvals' }} />
+          <Stack.Screen name="LeaveRequest" component={LeaveRequestScreen} options={{ title: 'Request Leave' }} />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />

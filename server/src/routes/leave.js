@@ -158,18 +158,20 @@ router.get('/month', authenticateToken, async (req, res) => {
   }
 });
 
-// Submit a leave request (single day or date range) — HR only
+// Submit a leave request (single day or date range)
+// Employees may file for themselves; HR/CEO/admin may file on behalf of others.
 router.post('/', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
-    if (!isHR(req.user)) {
-      return res.status(403).json({ error: 'Only HR can file leave requests' });
-    }
-
     const { leave_date, start_date, end_date, reason, user_id } = req.body;
 
-    // HR files on behalf of an employee (defaults to themselves)
     const targetUserId = user_id ? parseInt(user_id) : req.user.id;
+
+    // Non-management users can only file for themselves
+    const isManagement = isHR(req.user) || isCEO(req.user) || req.user.is_admin;
+    if (!isManagement && targetUserId !== req.user.id) {
+      return res.status(403).json({ error: 'You can only file leave requests for yourself' });
+    }
 
     const startDate = start_date || leave_date;
     const endDate = end_date || startDate;
