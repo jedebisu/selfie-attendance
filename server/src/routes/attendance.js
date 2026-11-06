@@ -53,7 +53,12 @@ router.post('/', authenticateToken, upload.single('photo'), async (req, res) => 
     const attendanceStatus = status || 'clock_in';
     const recordTimestamp = clientTimestamp ? new Date(clientTimestamp) : new Date();
 
-    // Duplicate prevention: block if same user submitted within last 2 minutes
+    // Duplicate prevention: advisory lock + 2-minute window check.
+    // The lock is per (user_id, status) pair, held only during this request,
+    // and prevents concurrent submissions from racing through the time-based check.
+    const lockId = (BigInt(user_id) << 32n) | BigInt(attendanceStatus === 'clock_in' ? 1 : 2);
+    await pool.query('SELECT pg_advisory_xact_lock($1)', [lockId.toString()]);
+
     const duplicateCheck = await pool.query(
       `SELECT id FROM attendance 
        WHERE user_id = $1 AND status = $2 
