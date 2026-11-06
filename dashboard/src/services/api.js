@@ -4,10 +4,15 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'https://selfie-api-sqgh.onren
 export const SERVER_URL = BASE_URL.replace(/\/api$/, '');
 
 // Resolve a photo URL: Cloudinary returns absolute https URLs,
-// legacy records use relative /uploads/ paths served by the API server
+// legacy records use relative /uploads/ paths served by the API server.
+// /uploads requires auth, and <img> tags cannot send an Authorization
+// header, so a validated (24h-expiring) token query param is appended.
 export const photoUrl = (url) => {
   if (!url) return '';
-  return url.startsWith('http') ? url : `${SERVER_URL}${url}`;
+  if (url.startsWith('http')) return url;
+  const token = localStorage.getItem('token');
+  const sep = url.includes('?') ? '&' : '?';
+  return `${SERVER_URL}${url}${token ? `${sep}token=${encodeURIComponent(token)}` : ''}`;
 };
 
 export const api = axios.create({

@@ -4,6 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { pool } = require('./config/database');
+const { isValidToken } = require('./middleware/auth');
+const rateLimit = require('express-rate-limit');
 
 const attendanceRoutes = require('./routes/attendance');
 const authRoutes = require('./routes/auth');
@@ -29,16 +31,86 @@ const { scheduleFsmSync } = require('./utils/fsmSync');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+// Behind Render's load balancer: trust the first X-Forwarded-For entry so
+// req.ip (used for rate limiting) is the real client, not the proxy.
+// Without this every caller shares the proxy's IP and rate limits become a
+// single global bucket.
+app.set('trust proxy', 1);
+
+// --- Security hardening ---
+// Security headers (hand-rolled to avoid adding a helmet dependency).
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  // Attendance photo <img> tags are loaded cross-origin by the dashboard.
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  if (req.secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+// CORS: only known first-party web origins get browser CORS access.
+// Requests without an Origin header (mobile app, curl, server-to-server)
+// are not subject to CORS and pass through unchanged.
+const ALLOWED_ORIGINS = [
+  'https://selfie-attendance-delta.vercel.app', // HR dashboard (see AGENTS.md)
+  'https://nap.ebisudps.com',                    // public NAP Checking web app
+  'http://localhost:3000',                       // dashboard dev server
+  'http://localhost:5173'                        // dispatch dev server
+];
+// Extra origins via env, comma separated (e.g. the dispatch production URL).
+(process.env.CORS_ORIGINS || '').split(',').forEach((origin) => {
+  const trimmed = origin.trim();
+  if (trimmed) ALLOWED_ORIGINS.push(trimmed);
+});
+// TODO: replace with exact dispatch production origin once confirmed.
+const VERCEL_ORIGIN_RE = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
+
 app.use(cors({
-  origin: true,
-  credentials: true
+  credentials: true,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const allowed = ALLOWED_ORIGINS.includes(origin) || VERCEL_ORIGIN_RE.test(origin);
+    callback(null, allowed);
+  }
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Static files for uploaded photos
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Rate limiting (express-rate-limit was already a dependency).
+// Generous global cap absorbs abuse without breaking dashboard polling
+// (calendar refresh = 12 req/min) or napcheck map panning (own 300/min cap).
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS' || req.path === '/api/health'
+});
+// Stricter cap on write operations (attendance, leave, users, dispatch).
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
+});
+app.use(generalLimiter);
+app.use('/api', writeLimiter);
+
+// Static files for uploaded photos (attendance selfies) — auth required.
+// Legacy <img> tags cannot send an Authorization header, so a validated
+// ?token= query parameter is also accepted (24h expiry still enforced).
+app.use('/uploads', (req, res, next) => {
+  const headerToken = req.headers.authorization && req.headers.authorization.split(' ')[1];
+  const token = headerToken || req.query.token;
+  if (!token || !isValidToken(token)) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
 
 // Option C fast-path: versioned NAP snapshot, served from disk and CDN/edge
 // cached. The frontend paints the first load from this, not the slow DB

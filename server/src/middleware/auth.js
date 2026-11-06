@@ -87,4 +87,16 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-module.exports = { authenticateToken, requireAdmin, optionalAuth };
+// Verify a JWT without touching the session table. Used for static assets
+// (attendance photos) where a DB round-trip per image would be wasteful.
+// Still enforces the 24h token expiry via jwt.verify.
+const isValidToken = (token) => {
+  try {
+    jwt.verify(token, ACTIVE_JWT_SECRET);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+module.exports = { authenticateToken, requireAdmin, optionalAuth, isValidToken };
