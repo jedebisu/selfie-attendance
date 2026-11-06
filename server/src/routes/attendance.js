@@ -389,6 +389,8 @@ router.get('/', authenticateToken, async (req, res) => {
     if (!canViewAll) { cp++; countSql += ` AND a.user_id = $${cp}`; countParams.push(req.user.id); }
     if (user_id) { cp++; countSql += ` AND a.user_id = $${cp}`; countParams.push(user_id); }
     if (date) { cp++; countSql += ` AND DATE(a.timestamp + INTERVAL '8 hours') = $${cp}`; countParams.push(date); }
+    if (start_date) { cp++; countSql += ` AND DATE(a.timestamp + INTERVAL '8 hours') >= $${cp}`; countParams.push(start_date); }
+    if (end_date) { cp++; countSql += ` AND DATE(a.timestamp + INTERVAL '8 hours') <= $${cp}`; countParams.push(end_date); }
     if (status) { cp++; countSql += ` AND a.status = $${cp}`; countParams.push(status); }
     const countResult = await pool.query(countSql, countParams);
 

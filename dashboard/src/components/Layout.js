@@ -17,13 +17,18 @@ const Layout = () => {
     { to: '/attendance', icon: Clock, label: 'Attendance' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
     { to: '/leave', icon: CalendarOff, label: 'Leave' },
-    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { to: '/analytics', icon: BarChart3, label: 'Analytics', managementOnly: true },
     { to: '/users', icon: Users, label: 'Users', adminOnly: true },
     { to: '/map', icon: MapPin, label: 'Map View' },
     { to: '/live', icon: Radar, label: 'Live Tracking', adminOnly: true },
   ];
 
-  const navItems = allNavItems.filter(item => !item.adminOnly || user?.is_admin);
+  const isManagement = ['hr', 'ceo'].includes(user?.role) || user?.is_admin;
+  const navItems = allNavItems.filter(
+    (item) =>
+      (!item.adminOnly || user?.is_admin) &&
+      (!item.managementOnly || isManagement)
+  );
 
   return (
     <div className="layout">

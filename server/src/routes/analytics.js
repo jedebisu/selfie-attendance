@@ -3,7 +3,18 @@ const router = express.Router();
 const { pool } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 
-router.get('/overview', authenticateToken, async (req, res) => {
+// Org-wide workforce analytics (headcount, everyone's hours, attendance
+// trends): restricted to HR/CEO/admin. Employees see their own data via
+// /attendance/summary/me and /attendance/calendar/me.
+const requireWorkforceAnalytics = (req, res, next) => {
+  if (req.user.is_admin || ['admin', 'hr', 'ceo'].includes(req.user.role)) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Analytics access is restricted to HR/CEO/admin' });
+};
+router.use(authenticateToken, requireWorkforceAnalytics);
+
+router.get('/overview', async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     const start = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -92,7 +103,7 @@ router.get('/overview', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/attendance-trend', authenticateToken, async (req, res) => {
+router.get('/attendance-trend', async (req, res) => {
   try {
     const { start_date, end_date, user_id } = req.query;
     const start = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -132,7 +143,7 @@ router.get('/attendance-trend', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/hours-worked', authenticateToken, async (req, res) => {
+router.get('/hours-worked', async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     const start = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -182,7 +193,7 @@ router.get('/hours-worked', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/clock-in-distribution', authenticateToken, async (req, res) => {
+router.get('/clock-in-distribution', async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     const start = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -216,7 +227,7 @@ router.get('/clock-in-distribution', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/day-of-week', authenticateToken, async (req, res) => {
+router.get('/day-of-week', async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     const start = start_date || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
