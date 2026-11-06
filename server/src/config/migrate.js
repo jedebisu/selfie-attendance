@@ -89,6 +89,13 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_users_employee_id ON users(employee_id);
     `);
 
+    // Composite index for duplicate-check query (user_id, status, timestamp)
+    // Optimizes: "WHERE user_id = ? AND status = ? AND timestamp > ?"
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_attendance_duplicate_check 
+        ON attendance(user_id, status, timestamp DESC);
+    `);
+
     // Leave requests table
     await client.query(`
       CREATE TABLE IF NOT EXISTS leave_requests (
@@ -106,6 +113,13 @@ const createTables = async () => {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_leave_user_id ON leave_requests(user_id);
       CREATE INDEX IF NOT EXISTS idx_leave_date ON leave_requests(leave_date);
+    `);
+
+    // Composite index for leave balance/overlap queries
+    // Optimizes: "WHERE user_id = ? AND status IN ('pending','approved')"
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_leave_balance_check
+        ON leave_requests(user_id, status, leave_date);
     `);
 
     // Multi-day leaves: end_date (nullable = same day as leave_date)

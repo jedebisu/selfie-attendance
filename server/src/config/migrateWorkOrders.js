@@ -379,6 +379,7 @@ const createWorkOrderTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_wo_coords ON work_orders (latitude, longitude);
       CREATE INDEX IF NOT EXISTS idx_wo_deleted ON work_orders (deleted_at);
       CREATE INDEX IF NOT EXISTS idx_wo_history_wo ON work_order_history (work_order_id);
+      CREATE INDEX IF NOT EXISTS idx_wo_date_created ON work_orders (date_created);
     `);
 
     // Seed default statuses / channels (idempotent, does not overwrite edits)
