@@ -192,6 +192,15 @@ router.get('/calendar/me', authenticateToken, async (req, res) => {
 // Get today's attendance summary (MUST be before /:id to avoid route conflict)
 router.get('/summary/today', authenticateToken, async (req, res) => {
   try {
+    // Privacy: employees only see their own row; HR/CEO/admin see everyone.
+    const canViewAll = !!req.user.is_admin || ['admin', 'hr', 'ceo'].includes(req.user.role);
+    const params = [];
+    let scopeWhere = '';
+    if (!canViewAll) {
+      params.push(req.user.id);
+      scopeWhere = ' AND u.id = $1';
+    }
+
     const result = await pool.query(
       `SELECT 
         u.id,
@@ -202,9 +211,10 @@ router.get('/summary/today', authenticateToken, async (req, res) => {
         COUNT(CASE WHEN a.status = 'clock_in' THEN 1 END) as clock_in_count
        FROM users u
        LEFT JOIN attendance a ON u.id = a.user_id AND DATE(a.timestamp + INTERVAL '8 hours') = DATE(NOW() + INTERVAL '8 hours')
-       WHERE u.is_active = true
+       WHERE u.is_active = true${scopeWhere}
        GROUP BY u.id, u.name, u.employee_id
-       ORDER BY u.name`
+       ORDER BY u.name`,
+      params
     );
 
     res.json(result.rows);
@@ -228,6 +238,11 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
     const nextYear = endMonth === 12 ? parseInt(year) + 1 : parseInt(year);
     const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
+    // Privacy: employees only see their own calendar rows; HR/CEO/admin see all.
+    const canViewAll = !!req.user.is_admin || ['admin', 'hr', 'ceo'].includes(req.user.role);
+    const scopeParams = canViewAll ? [] : [req.user.id];
+    const scopeWhere = canViewAll ? '' : ' AND u.id = $3';
+
     const result = await pool.query(
       `SELECT 
         u.id as user_id,
@@ -244,9 +259,9 @@ router.get('/summary/monthly', authenticateToken, async (req, res) => {
        LEFT JOIN attendance a ON u.id = a.user_id 
          AND DATE(a.timestamp + INTERVAL '8 hours') >= $1::date
          AND DATE(a.timestamp + INTERVAL '8 hours') < $2::date
-       WHERE u.is_active = true
+       WHERE u.is_active = true${scopeWhere}
        ORDER BY u.name, a.timestamp`,
-      [startDate, endDate]
+      [startDate, endDate, ...scopeParams]
     );
 
     // Group by user, then by date
@@ -306,6 +321,10 @@ router.get('/', authenticateToken, async (req, res) => {
     const { user_id, date, status, page = 1, limit = 50, start_date, end_date } = req.query;
     const offset = (page - 1) * limit;
 
+    // Privacy: only HR/CEO/admin may list records for other employees.
+    // Everyone else is silently scoped to their own records.
+    const canViewAll = !!req.user.is_admin || ['admin', 'hr', 'ceo'].includes(req.user.role);
+
     let query = `
       SELECT a.*, u.name as user_name, u.employee_id
       FROM attendance a
@@ -314,6 +333,12 @@ router.get('/', authenticateToken, async (req, res) => {
     `;
     const params = [];
     let paramCount = 0;
+
+    if (!canViewAll) {
+      paramCount++;
+      query += ` AND a.user_id = $${paramCount}`;
+      params.push(req.user.id);
+    }
 
     if (user_id) {
       paramCount++;
@@ -361,6 +386,7 @@ router.get('/', authenticateToken, async (req, res) => {
     let countSql = `SELECT COUNT(*) FROM attendance a WHERE 1=1`;
     const countParams = [];
     let cp = 0;
+    if (!canViewAll) { cp++; countSql += ` AND a.user_id = $${cp}`; countParams.push(req.user.id); }
     if (user_id) { cp++; countSql += ` AND a.user_id = $${cp}`; countParams.push(user_id); }
     if (date) { cp++; countSql += ` AND DATE(a.timestamp + INTERVAL '8 hours') = $${cp}`; countParams.push(date); }
     if (status) { cp++; countSql += ` AND a.status = $${cp}`; countParams.push(status); }
@@ -397,7 +423,14 @@ router.get('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Record not found' });
     }
 
-    res.json(result.rows[0]);
+    // Privacy: a record may only be fetched by its owner or HR/CEO/admin.
+    const record = result.rows[0];
+    const canViewAll = !!req.user.is_admin || ['admin', 'hr', 'ceo'].includes(req.user.role);
+    if (!canViewAll && Number(record.user_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    res.json(record);
   } catch (error) {
     console.error('Error fetching attendance record:', error);
     res.status(500).json({ error: 'Failed to fetch attendance record' });

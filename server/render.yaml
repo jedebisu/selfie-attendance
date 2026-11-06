@@ -13,9 +13,11 @@ services:
         fromDatabase:
           name: selfie-attendance-db
           property: connectionString
+      # Secret value is managed ONLY in the Render dashboard (sync: false).
+      # It was previously committed to this file — rotate it in Render after
+      # every deploy of this change (the old value remains in git history).
       - key: JWT_SECRET
         sync: false
-        value: "selfie-attendance-prod-jwt-secret-2024"
       - key: DB_SSL
         value: true
       - key: MAX_FILE_SIZE

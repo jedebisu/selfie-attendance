@@ -8,6 +8,12 @@ const VALID_ROLES = ['employee', 'admin', 'hr', 'ceo'];
 
 // Get all users
 router.get('/', authenticateToken, async (req, res) => {
+  // Privacy: the full user directory (names, emails, roles) is only
+  // available to HR/CEO/admin. Employees never consume this endpoint
+  // (mobile has no callers; dashboard fetches it for HR and admin pages only).
+  if (!req.user.is_admin && !['hr', 'ceo'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   try {
     const result = await pool.query(
       'SELECT id, employee_id, name, email, is_active, is_admin, role, created_at FROM users ORDER BY name'
