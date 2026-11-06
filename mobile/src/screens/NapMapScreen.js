@@ -33,8 +33,6 @@ const MIN_REFRESH_DISTANCE_M = 50;
 const LIVE_UPDATE_DISTANCE_M = 25;
 const LIVE_UPDATE_INTERVAL_MS = 10000;
 const NEARBY_REFRESH_DEBOUNCE_MS = 1200;
-// Fallback bias center (Cebu) when neither the visible map region nor GPS has a usable coordinate.
-const MAP_DEFAULT_CENTER = { latitude: 10.3157, longitude: 123.8854 };
 
 const STATUS_FILTERS = [
   { label: 'All', value: '' },
@@ -69,8 +67,6 @@ const NapMapScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [nearbyNaps, setNearbyNaps] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
-  const [placeResults, setPlaceResults] = useState([]);
-  const [placesPhase, setPlacesPhase] = useState('idle'); // 'idle' | 'loading' | 'error' | 'empty' | 'done'
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
 
@@ -81,7 +77,7 @@ const NapMapScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
-  const [napError, setNapError] = useState(false); // NAP engine error flag (unified panel shows per-engine Retry)
+  const [napError, setNapError] = useState(false); // NAP search error flag
   const [droppedPin, setDroppedPin] = useState(null);
   const [searchMarker, setSearchMarker] = useState(null);
   const [coordinateSearchResult, setCoordinateSearchResult] = useState(null);
@@ -92,8 +88,7 @@ const NapMapScreen = ({ navigation }) => {
   const [dataDateError, setDataDateError] = useState(false);
   const [locating, setLocating] = useState(false);
   const mapRef = useRef(null);
-  const napSeqRef = useRef(0);     // guards NAP-search responses (unified search engine #1)
-  const placeSeqRef = useRef(0);   // guards Photon responses (unified search engine #2)
+  const napSeqRef = useRef(0);     // guards NAP-search responses
   const nearbySeqRef = useRef(0);
   const locationRef = useRef(null);
   const droppedPinRef = useRef(null);
@@ -101,9 +96,6 @@ const NapMapScreen = ({ navigation }) => {
   const lastFetchedCenterRef = useRef(null);
   const fetchNearbyNapsRef = useRef(null);
   const lastRouteRef = useRef({ napId: null, origin: null });
-  const mapRegionRef = useRef(null);        // latest visible map region (Photon bias source)
-  const lastPlacesQueryRef = useRef(null);  // last non-empty places query (Retry target)
-  const lastUnifiedQueryRef = useRef(null); // latest settled unified query (section Retry targets)
   const myLocationBusyRef = useRef(false);
   const watcherRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -293,11 +285,6 @@ const NapMapScreen = ({ navigation }) => {
       setNapError(false);
       const naps = response.naps || [];
       setSearchResults(naps);
-      // Empty NAP search: one labeled "Nearby places" Photon fallback per
-      // settled search (never per keystroke; never while coordinate mode).
-      if (!naps.length && !coordinateSearchResult) {
-        runPlacesSearch(query);
-      }
     } catch (error) {
       console.error('Error searching NAPs:', error);
       setNapError(true);
@@ -306,30 +293,23 @@ const NapMapScreen = ({ navigation }) => {
         setSearching(false);
       }
     }
-  }, [statusFilter, coordinateSearchResult, runPlacesSearch]);
+  }, [statusFilter]);
 
-  // Unified search: NAP database + Photon places in parallel on every settled
-  // query. Each engine guards its own sequence ref, so a NAP response can
-  // never clobber a fresher Photon response (or vice versa).
+  // Unified search: NAP database on every settled query.
   const runUnifiedSearch = useCallback(async (query) => {
     const q = String(query || '').trim();
     if (q.length < 2) {
       napSeqRef.current++;
-      placeSeqRef.current++;
       setSearchResults([]);
-      setPlaceResults([]);
       setIsSearching(false);
-      setPlacesPhase('idle');
       setNapError(false);
       return;
     }
     // Keystroke path: an Enter flush just happened (or is pending) for this
     // identical query — don't repeat it 350 ms later.
     lastFlushQueryRef.current = null;
-    lastUnifiedQueryRef.current = q;
     performNapSearch(q);
-    runPlacesSearch(q);
-  }, [performNapSearch, runPlacesSearch]);
+  }, [performNapSearch]);
 
   const lastFlushRef = useRef(0);
   const lastFlushQueryRef = useRef(null); // target of an Enter flush (600 ms suppression)
@@ -357,8 +337,8 @@ const NapMapScreen = ({ navigation }) => {
       return;
     }
 
-    // Flush unified search immediately (NAP + Photon in parallel).
-    // Selection stays explicit — Enter never auto-selects a place.
+    // Flush the NAP search immediately. Selection stays explicit —
+    // Enter never auto-selects a result.
     const q = searchQuery.trim();
     if (q.length >= 2) {
       lastFlushRef.current = Date.now();
@@ -378,14 +358,11 @@ const NapMapScreen = ({ navigation }) => {
       setCoordinateSearchResult(coords);
       setDroppedPin(null); // BUG-002: a coordinate wins over a dropped pin
       setSearchMarker(coords);
-      // Clear engine outputs/phases while in coordinate mode
-      setPlaceResults([]);
-      setPlacesPhase('idle');
+      // Clear stale NAP results while in coordinate mode
       setNapError(false);
-      // Invalidate any mid-flight NAP/Photon response for the previous text
+      // Invalidate any mid-flight NAP response for the previous text
       // query so a stale result can't render below the coordinate card.
       napSeqRef.current++;
-      placeSeqRef.current++;
       // Fly to location
       if (mapRef.current) {
         mapRef.current.animateToRegion({
@@ -414,113 +391,12 @@ const NapMapScreen = ({ navigation }) => {
 
   const clearSearch = () => {
     napSeqRef.current++;
-    placeSeqRef.current++;
     setSearchQuery('');
     setSearchResults([]);
-    setPlaceResults([]);
     setIsSearching(false);
     setCoordinateSearchResult(null);
     setSearchMarker(null);
-    setPlacesPhase('idle');
     setNapError(false);
-  };
-
-  // Photon bias source: the visible map region if any (preferred over GPS so a
-  // user browsing another area gets results there), else GPS, else Cebu.
-  const biasCenter = () => {
-    if (mapRegionRef.current) return mapRegionRef.current;
-    if (locationRef.current) return locationRef.current;
-    return MAP_DEFAULT_CENTER;
-  };
-
-  // Result-type zoom deltas (web-app convention): province-wide → city →
-  // street/POI close-up. Unknown or missing classification falls to the
-  // close-up default via placeKind's own fallback.
-  const deltaFor = (kind) => {
-    switch (kind) {
-      case 'Province': return 1.0;
-      case 'City': return 0.1;
-      default: return 0.01;
-    }
-  };
-
-  // Shared Photon runner (no API key required). Phases: loading → empty |
-  // error | done. Stale responses (superseded seq) are dropped untouched.
-  const runPlacesSearch = useCallback(async (query) => {
-    const q = String(query || '').trim();
-    if (q.length < 2) {
-      lastPlacesQueryRef.current = null;
-      setPlaceResults([]);
-      setPlacesPhase('idle');
-      return;
-    }
-    const seq = ++placeSeqRef.current;
-    lastPlacesQueryRef.current = q;
-    setPlacesPhase('loading');
-    try {
-      const c = biasCenter();
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(
-        `https://photon.komoot.io/api?q=${encodeURIComponent(q)}&lat=${c.latitude.toFixed(4)}&lon=${c.longitude.toFixed(4)}&lang=en&limit=8`,
-        { signal: controller.signal }
-      );
-      clearTimeout(timeoutId);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json(); // malformed JSON throws → 'error'
-      if (seq !== placeSeqRef.current) return;
-      const feats = (d.features || []).filter((f) => f.geometry?.coordinates);
-      // Dedupe Photon hits (node/way/relation records for the same place)
-      const seen = new Set();
-      const unique = feats.filter((f) => {
-        const [lon, lat] = f.geometry.coordinates;
-        const key = `${String(f.properties?.osm_type || 'n/a')}|${String(f.properties?.osm_id ?? 'n/a')}|${Math.round(lat * 1e5)}|${Math.round(lon * 1e5)}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      setPlaceResults(unique);
-      setPlacesPhase(unique.length ? 'done' : 'empty');
-    } catch (error) {
-      console.error('Places search error:', error);
-      if (seq !== placeSeqRef.current) return;
-      setPlacesPhase('error');
-    }
-  }, []);
-
-  const retryPlacesSearch = useCallback(() => {
-    if (lastPlacesQueryRef.current) {
-      runPlacesSearch(lastPlacesQueryRef.current);
-    }
-  }, [runPlacesSearch]);
-
-  const flyToPlace = (feature) => {
-    const [lon, lat] = feature.geometry?.coordinates || [];
-    const c = parseCoordinate(lat, lon);
-    if (!c) return;
-    Keyboard.dismiss();
-    const delta = deltaFor(placeKind(feature));
-    setDroppedPin(null);
-    setSearchMarker({ latitude: c.latitude, longitude: c.longitude });
-    if (mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: c.latitude,
-        longitude: c.longitude,
-        latitudeDelta: delta,
-        longitudeDelta: delta,
-      }, 800);
-    }
-  };
-
-  const placeKind = (f) => {
-    const p = f.properties || {};
-    const k = String(p.osm_key || '').toLowerCase();
-    const v = String(p.osm_value || '').toLowerCase();
-    if (k === 'place' && ['state', 'province', 'region', 'county'].includes(v)) return 'Province';
-    if (k === 'place' || (k === 'boundary' && v === 'administrative')) return 'City';
-    if (k === 'highway') return 'Street';
-    if (k === 'building' || ['house', 'apartments', 'residential', 'detached'].includes(v)) return 'House';
-    return 'POI';
   };
 
   const selectNap = useCallback((nap) => {
@@ -756,123 +632,6 @@ const NapMapScreen = ({ navigation }) => {
     ? { ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }
     : { latitude: 10.3157, longitude: 123.8854, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
-  /** Unified results panel (Task 2) */
-
-  /** Single NAP facility row inside the unified results panel. */
-  const renderNapSearchRow = ({ item: nap }) => {
-    const color = getMarkerColor(nap.vacant_lines);
-    const address = [nap.barangay_name, nap.city_name, nap.province_name].filter(Boolean).join(', ') || 'N/A';
-    return (
-      <TouchableOpacity style={styles.unifiedNapRow} onPress={() => flyToNap(nap)}>
-        <View style={[styles.colorDot, { backgroundColor: color }]} />
-        <View style={styles.unifiedNapContent}>
-          <View style={styles.unifiedNapTitleRow}>
-            <Text style={styles.unifiedNapTitle} numberOfLines={1}>{nap.nap_id}</Text>
-            <StatusBadge status={nap.naps_status} />
-          </View>
-          <Text style={styles.unifiedNapSubtitle} numberOfLines={1}>{nap.building_served || 'N/A'}</Text>
-          <Text style={styles.unifiedNapAddress} numberOfLines={1}>{address}</Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  /** One panel, two labeled sections: registered NAP facilities first, then
-   * external places from Photon. Each section owns its loading/error/empty
-   * state so one engine failing never hides the other's results. */
-  const renderUnifiedResults = () => {
-    if (coordinateSearchResult) return null;
-    if (searchQuery.trim().length < 2) return null;
-
-    const bothSettled = !isSearching && placesPhase !== 'loading';
-    const nothingFound = bothSettled && searchResults.length === 0 && placeResults.length === 0;
-
-    return (
-      <View style={styles.unifiedResultsContainer}>
-        {/* NAP FACILITIES — registered facilities from /api/naps/search */}
-        <View style={styles.unifiedSection}>
-          <Text style={styles.sectionLabel}>NAP FACILITIES</Text>
-          {isSearching ? (
-            <View style={styles.sectionLoading}>
-              <ActivityIndicator size="small" color={COLORS.primary} />
-              <Text style={styles.sectionLoadingText}>Searching NAP facilities…</Text>
-            </View>
-          ) : napError ? (
-            <View style={styles.sectionError}>
-              <Text style={styles.sectionErrorText}>NAP search unavailable</Text>
-              <TouchableOpacity
-                style={styles.sectionRetry}
-                onPress={() => {
-                  if (lastUnifiedQueryRef.current) performNapSearch(lastUnifiedQueryRef.current);
-                }}
-              >
-                <Text style={styles.sectionRetryText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : searchResults.length > 0 ? (
-            <FlatList
-              data={searchResults}
-              keyExtractor={(item) => String(item.id ?? item.nap_id)}
-              keyboardShouldPersistTaps="handled"
-              renderItem={renderNapSearchRow}
-              style={styles.unifiedList}
-            />
-          ) : null}
-        </View>
-
-        {/* PLACES & LOCATIONS — external results from Photon */}
-        <View style={styles.unifiedSection}>
-          <Text style={styles.sectionLabel}>PLACES &amp; LOCATIONS</Text>
-          {placesPhase === 'loading' ? (
-            <View style={styles.sectionLoading}>
-              <ActivityIndicator size="small" color={COLORS.primary} />
-              <Text style={styles.sectionLoadingText}>Searching places…</Text>
-            </View>
-          ) : placesPhase === 'error' ? (
-            <View style={styles.sectionError}>
-              <Text style={styles.sectionErrorText}>Places search unavailable</Text>
-              <TouchableOpacity style={styles.sectionRetry} onPress={retryPlacesSearch}>
-                <Text style={styles.sectionRetryText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : placesPhase === 'empty' ? (
-            <Text style={styles.sectionEmptyText}>No places found</Text>
-          ) : placeResults.length > 0 ? (
-            <FlatList
-              data={placeResults}
-              keyExtractor={(item, index) => `place-${index}`}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => {
-                const p = item.properties || {};
-                const [lon, lat] = item.geometry.coordinates;
-                const kind = placeKind(item);
-                const sub = [p.district, p.locality, p.city, p.county, p.state]
-                  .map((x) => String(x || '').trim()).filter(Boolean).join(', ');
-                return (
-                  <TouchableOpacity style={styles.unifiedPlaceRow} onPress={() => flyToPlace(item)}>
-                    <View style={styles.placeResultDot} />
-                    <View style={styles.unifiedPlaceContent}>
-                      <Text style={styles.placeResultName}>{p.name || searchQuery}</Text>
-                      <Text style={styles.placeResultSub}>{kind}{sub ? ` · ${sub}` : ''}</Text>
-                      <Text style={styles.placeResultCoords}>{formatCoords(lat, lon)}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              }}
-              style={styles.unifiedList}
-            />
-          ) : null}
-        </View>
-
-        {nothingFound && (
-          <View style={styles.noResultsAll}>
-            <Text style={styles.noResultsText}>No results found</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
   return (
     <View style={styles.container}>
       {/* Search + results overlay — one stacked column above the map */}
@@ -881,7 +640,7 @@ const NapMapScreen = ({ navigation }) => {
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search NAPs, places, or coordinates..."
+            placeholder="Search NAPs or coordinates..."
             placeholderTextColor={COLORS.gray}
             value={searchQuery}
             onChangeText={handleSearchChange}
@@ -930,9 +689,6 @@ const NapMapScreen = ({ navigation }) => {
             </View>
           </View>
         )}
-
-        {/* Unified results panel — rendered below the coordinate card */}
-        {renderUnifiedResults()}
 
         {/* Status Bar */}
         <View style={styles.statusBar}>
@@ -997,11 +753,6 @@ const NapMapScreen = ({ navigation }) => {
         showsUserLocation={true}
         followsUserLocation={false}
         onLongPress={handleMapLongPress}
-        onRegionChangeComplete={(r) => {
-          // Track the visible region center for Photon bias (ref only — no re-render).
-          const c = parseCoordinate(r.latitude, r.longitude);
-          if (c) mapRegionRef.current = c;
-        }}
       >
         {/* 1km radius circle follows the active search coordinate */}
         {activeCoordinate && !isSearching && (
