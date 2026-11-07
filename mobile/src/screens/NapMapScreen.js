@@ -667,38 +667,6 @@ const NapMapScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* Coordinate Search Result Card */}
-        {coordinateSearchResult && (
-          <View style={styles.coordResultCard}>
-            <View style={styles.coordResultHeader}>
-              <Text style={styles.coordResultTitle}>📍 Specified Coordinates</Text>
-              <Text style={styles.coordResultInput}>{searchQuery}</Text>
-            </View>
-            <View style={styles.coordResultActions}>
-              <TouchableOpacity
-                style={styles.coordCopyButton}
-                onPress={() => copyToClipboard(formatCoords(coordinateSearchResult.latitude, coordinateSearchResult.longitude))}
-              >
-                <Text style={styles.coordCopyButtonText}>⧉ Copy {formatCoords(coordinateSearchResult.latitude, coordinateSearchResult.longitude)}</Text>
-              </TouchableOpacity>
-              <View style={styles.coordCopyRow}>
-                <TouchableOpacity
-                  style={[styles.coordCopyButton, styles.coordCopyButtonSmall]}
-                  onPress={() => copyToClipboard(coordinateSearchResult.latitude.toFixed(6))}
-                >
-                  <Text style={styles.coordCopyButtonText}>Lat: {coordinateSearchResult.latitude.toFixed(6)}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.coordCopyButton, styles.coordCopyButtonSmall]}
-                  onPress={() => copyToClipboard(coordinateSearchResult.longitude.toFixed(6))}
-                >
-                  <Text style={styles.coordCopyButtonText}>Lng: {coordinateSearchResult.longitude.toFixed(6)}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        )}
-
         {/* Status Bar */}
         <View style={styles.statusBar}>
           <View style={styles.statusLeft}>
@@ -1023,52 +991,6 @@ const styles = StyleSheet.create({
   },
   searchLoader: {
     marginLeft: 8,
-  },
-  coordResultCard: {
-    backgroundColor: '#fff',
-    marginTop: 8,
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  coordResultHeader: {
-    marginBottom: 8,
-  },
-  coordResultTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.dark,
-  },
-  coordResultInput: {
-    fontSize: 12,
-    color: COLORS.gray,
-    marginTop: 2,
-  },
-  coordResultActions: {
-    gap: 6,
-  },
-  coordCopyButton: {
-    backgroundColor: COLORS.lightGray,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-  },
-  coordCopyButtonSmall: {
-    flex: 1,
-  },
-  coordCopyButtonText: {
-    fontSize: 12,
-    color: COLORS.dark,
-    fontWeight: '500',
-  },
-  coordCopyRow: {
-    flexDirection: 'row',
-    gap: 6,
   },
   searchMarkerContainer: {
     width: 24,
