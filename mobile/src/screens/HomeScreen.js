@@ -208,12 +208,6 @@ const HomeScreen = memo(({ navigation }) => {
         >
           <Text style={styles.quickButtonText}>📅 Calendar</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.quickButton}
-          onPress={() => navigation.navigate('LeaveRequest')}
-        >
-          <Text style={styles.quickButtonText}>✈️ Request Leave</Text>
-        </TouchableOpacity>
         <View style={styles.quickNapContainer}>
           <TouchableOpacity
             style={styles.quickButton}
