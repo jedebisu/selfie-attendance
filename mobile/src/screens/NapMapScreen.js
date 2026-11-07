@@ -325,7 +325,14 @@ const NapMapScreen = ({ navigation }) => {
     Keyboard.dismiss();
 
     if (coordinateSearchResult) {
-      // Coordinates: re-fly (idempotent) at the existing close-up zoom.
+      // Coordinates: drop pin at this location and fetch nearby NAPs.
+      setDroppedPin({
+        latitude: coordinateSearchResult.latitude,
+        longitude: coordinateSearchResult.longitude
+      });
+      setCoordinateSearchResult(null); // dismiss the coordinate card
+      setSearchMarker(null);
+      // Fly to the pinned location
       if (mapRef.current) {
         mapRef.current.animateToRegion({
           latitude: coordinateSearchResult.latitude,
@@ -334,6 +341,8 @@ const NapMapScreen = ({ navigation }) => {
           longitudeDelta: 0.01,
         }, 800);
       }
+      // Fetch nearby NAPs around the dropped pin will happen automatically
+      // via the existing useEffect that watches droppedPin changes
       return;
     }
 
