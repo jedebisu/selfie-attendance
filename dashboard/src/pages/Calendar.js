@@ -55,7 +55,6 @@ const SingleCalendar = ({ user, monthDate, onClickDay, leaveDates }) => {
         ))}
         {allDays.map((day, i) => {
           const inMonth = day >= monthStart && day <= monthEnd;
-          const weekend = isWeekend(day);
           const today = isToday(day);
           const dateKey = format(day, 'yyyy-MM-dd');
           const dayData = user.days[dateKey];
