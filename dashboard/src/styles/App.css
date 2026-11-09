@@ -219,10 +219,6 @@ body {
 .photo-placeholder.activity-photo { width: 40px; height: 40px; }
 .photo-placeholder.modal-photo { width: 280px; height: 280px; font-size: 12px; gap: 6px; }
 .photo-placeholder.modal-photo svg { width: 48px; height: 48px; }
-.photo-placeholder.popup-photo {
-  width: 140px; height: 100px; margin-bottom: 8px; font-size: 12px; gap: 4px;
-}
-.photo-placeholder.popup-photo svg { width: 40px; height: 40px; }
 
 .employee-cell { display: flex; align-items: center; gap: 10px; }
 .employee-cell .avatar {
@@ -363,7 +359,6 @@ body {
 }
 .form-group input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
 .form-group input[type="checkbox"] { width: auto; margin-right: 8px; }
-.checkbox-label { display: flex; align-items: center; cursor: pointer; }
 
 /* ========== Login Page ========== */
 .login-page {
