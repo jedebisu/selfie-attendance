@@ -47,7 +47,6 @@ function baseOptions(extra = {}) {
   };
 }
 
-let canvasSeq = 0;
 function makeCanvas(slot, ariaLabel) {
   const canvas = document.createElement('canvas');
   canvas.setAttribute('role', 'img');
