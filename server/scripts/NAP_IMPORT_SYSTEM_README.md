@@ -98,7 +98,6 @@ node scripts/upload-nap-data-safe.js path/to/standardized.csv --confirm
 
 | Script | Purpose |
 |--------|---------|
-| `upload-nap-data.js` | Original upload script (use -safe instead) |
 | `emit-nap-snapshot.js` | Regenerate map snapshot |
 
 ---
@@ -228,7 +227,7 @@ The EBISU T&A mobile app automatically uses the updated data:
 **Solution:** This is normal! The system automatically keeps the first occurrence and removes duplicates. Check the dedup report for details.
 
 ### Issue: "Transaction rolled back"
-**Solution:** Use `upload-nap-data-safe.js` instead of `upload-nap-data.js`. The safe version handles duplicates properly with UPSERT.
+**Solution:** Use `upload-nap-data-safe.js`. It handles duplicates properly with UPSERT.
 
 ### Issue: "File not processing"
 **Checklist:**
