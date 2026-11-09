@@ -74,6 +74,7 @@ const NapMapScreen = ({ navigation }) => {
   const [selectedNap, setSelectedNap] = useState(null);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [showList, setShowList] = useState(false);
+  const [searchStackHeight, setSearchStackHeight] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
@@ -644,7 +645,10 @@ const NapMapScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       {/* Search + results overlay — one stacked column above the map */}
-      <View style={styles.searchStack}>
+      <View
+        style={styles.searchStack}
+        onLayout={(e) => setSearchStackHeight(e.nativeEvent.layout.height)}
+      >
         {/* Search bar */}
         <View style={styles.searchContainer}>
           <TextInput
@@ -811,6 +815,10 @@ const NapMapScreen = ({ navigation }) => {
             initialNumToRender={20}
             maxToRenderPerBatch={20}
             windowSize={10}
+            contentContainerStyle={styles.listContent}
+            ListHeaderComponent={
+              <View style={{ height: searchStackHeight + 16 }} />
+            }
             ListEmptyComponent={
               <View style={styles.emptyList}>
                 <Text style={styles.emptyListText}>
@@ -1298,6 +1306,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#fff',
     zIndex: 15,
+  },
+  listContent: {
+    flexGrow: 1,
   },
   listItem: {
     flexDirection: 'row',
