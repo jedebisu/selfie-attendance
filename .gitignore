@@ -6,6 +6,10 @@ mobile/apk/
 .env
 build/
 dist/
+# Expo export output for local test builds (dist/ rule only matches "dist")
+mobile/dist-test/
+# Locally built APKs — the published copy lives on GitHub Releases
+mobile/EBISU-TA*.apk
 .DS_Store
 uploads/*
 !uploads/.gitkeep
