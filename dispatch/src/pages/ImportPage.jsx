@@ -7,7 +7,6 @@ import {
 import { importAPI, workOrderAPI } from '../services/api';
 import { FIELDS } from '../services/fields';
 
-const FIELD_BY_KEY = Object.fromEntries(FIELDS.map((f) => [f, null]));
 const FIELD_OPTIONS = FIELDS.map((f) => f.key);
 
 function SummaryCard({ label, value, color }) {

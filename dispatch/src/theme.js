@@ -56,7 +56,8 @@ export const CATEGORICAL = [
 //   bg    soft tint for badge backgrounds
 //   color vivid accent for charts / map markers / legends
 //   text  darker shade for badge text (accessible contrast, section 8)
-export const STATUS_STYLE = {
+// Not exported: only reachable via statusStyle() below.
+const STATUS_STYLE = {
   NEW: { bg: C.primarySoft, color: C.primary, text: C.primary },
   'FOR DISPATCH': { bg: C.purpleSoft, color: C.purple, text: C.purple },
   ASSIGNED: { bg: C.tealSoft, color: C.teal, text: '#0F766E' },
@@ -69,8 +70,9 @@ export const STATUS_STYLE = {
   default: { bg: C.slateSoft, color: C.slate, text: C.slate },
 };
 
-// Source channel → accent color (nodes/bars/pies).
-export const CHANNEL_COLOR = {
+// Source channel → accent color (nodes/bars/pies). Not exported: only
+// reachable via channelColor() below.
+const CHANNEL_COLOR = {
   IPG: '#F97316',
   RTC: C.success,
   EBISU: C.purple,

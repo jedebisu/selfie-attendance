@@ -76,7 +76,6 @@ export default function SyncStatusBar() {
   const ok = status.configured && status.last_status === 'ok';
   const running = status.running;
   const configured = status.configured;
-  const moderate = configured && !(status.last_status === 'ok') && status.last_status !== 'error';
   const tone = running ? 'running' : ok ? 'ok' : status.last_status === 'error' ? 'error' : configured ? 'idle' : 'off';
 
   return (
