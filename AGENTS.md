@@ -10,6 +10,11 @@ dashboard/ → React (Create React App), deployed to Vercel
 mobile/    → Expo SDK 54 React Native, deployed via EAS
 ```
 
+## Working Rules
+
+1. **Beginner-readable organization** — keep files, folders, and names obvious. One job per file, short functions, plain names, and comments that explain *why* (not *what*). If a change makes the code harder to follow, simplify it before moving on.
+2. **Check before you create** — before writing any new file, function, component, helper, script, or style, search the repo first (`grep`, `glob`, and read the nearby files). Reuse or extend what exists instead of duplicating it. Create something new only when nothing suitable exists — and mention where you looked.
+
 ## Commands
 
 ### Server (`server/`)
