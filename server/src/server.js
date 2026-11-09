@@ -55,7 +55,8 @@ app.use((req, res, next) => {
 // Requests without an Origin header (mobile app, curl, server-to-server)
 // are not subject to CORS and pass through unchanged.
 const ALLOWED_ORIGINS = [
-  'https://selfie-attendance-delta.vercel.app', // HR dashboard (see AGENTS.md)
+  'https://ewms.ebisudps.com',                   // EWMS dashboard (custom domain)
+  'https://selfie-attendance-delta.vercel.app', // HR dashboard (Vercel default URL)
   'https://nap.ebisudps.com',                    // public NAP Checking web app
   'http://localhost:3000',                       // dashboard dev server
   'http://localhost:5173'                        // dispatch dev server
