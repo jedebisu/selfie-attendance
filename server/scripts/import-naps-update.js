@@ -151,6 +151,13 @@ const main = async () => {
 
   const client = await pool.connect();
   try {
+    // Some managed Postgres roles carry a low role-level statement_timeout
+    // (default pg has none). The 323k-row upsert + CREATE INDEX steps below
+    // legitimately exceed it, which failed builds AFTER the data had already
+    // committed ("canceling statement due to statement timeout"). Lift it for
+    // this import session only.
+    await client.query(`SET statement_timeout = '30min';`);
+
     // 1) Hash gate — skip identical exports (fast no-op on every deploy).
     const currentHash = sha256File(GZ_PATH);
     const storedHash = fs.existsSync(HASH_PATH) ? fs.readFileSync(HASH_PATH, 'utf-8').trim() : '';
